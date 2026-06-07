@@ -24,7 +24,6 @@ class PluginResult:
 
 @dataclass
 class ProcessedResult:
-    target: str
     by_plugin: dict[str, list[str]] = field(default_factory=dict)
     wildcards: list[str] = field(default_factory=list)
     out_of_scope: list[str] = field(default_factory=list)

@@ -15,7 +15,12 @@ class ConfigManager:
 
     Load order (last wins):
         1. ~/.config/subx/.env   — global API keys
-        2. config file (-c)      — target, scope, oos, sources, api_keys
+        2. config file (-c)      — scope, out_of_scope, sources, api_keys
+
+    scope is required and supports multiple domains:
+        scope:
+          - example.com
+          - sub.example.com
 
     Supported config formats: YAML (.yaml / .yml), JSON (.json)
     """
@@ -23,7 +28,6 @@ class ConfigManager:
     def __init__(self, config_path: str):
         self.config_path = Path(config_path)
 
-        self.target: str = ""
         self.api_keys: dict[str, str] = {}
         self.scope: list[str] = []
         self.out_of_scope: list[str] = []
@@ -65,10 +69,14 @@ class ConfigManager:
             logger.error("[Config] Failed to parse config file: %s", e)
             raise
 
-        self.target      = self._parse_str(data, "target")
-        self.scope       = self._parse_list(data, "scope")
+        self.scope        = self._parse_list(data, "scope")
         self.out_of_scope = self._parse_list(data, "out_of_scope")
-        self.sources     = self._parse_list(data, "sources") or None
+        self.sources      = self._parse_list(data, "sources") or None
+
+        if not self.scope:
+            raise ValueError(
+                "Config file must define at least one entry under 'scope'."
+            )
 
         # api_keys in config override .env
         for key, val in data.get("api_keys", {}).items():
@@ -78,11 +86,6 @@ class ConfigManager:
     # ------------------------------------------------------------------
     # Parsing helpers
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _parse_str(data: dict, key: str) -> str:
-        value = data.get(key, "")
-        return str(value).strip() if value else ""
 
     @staticmethod
     def _parse_list(data: dict, key: str) -> list[str]:
@@ -97,15 +100,16 @@ class ConfigManager:
     # Getters
     # ------------------------------------------------------------------
 
-    def get_target(self) -> str:
-        return self.target
-
     def get_api_keys(self) -> dict[str, str]:
         return self.api_keys
 
     def get_scope(self) -> list[str]:
-        """Return configured scope, falling back to [target]."""
-        return self.scope if self.scope else [self.target]
+        """Return all scoped domains. Always non-empty after __init__."""
+        return self.scope
+
+    def get_primary(self) -> str:
+        """Return the first scope entry — useful for display/logging."""
+        return self.scope[0]
 
     def get_out_of_scope(self) -> list[str]:
         return self.out_of_scope

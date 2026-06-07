@@ -1,10 +1,14 @@
-import logging
 import asyncio
+import logging
 from datetime import datetime, timezone
-from sqlmodel import SQLModel, select
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from pathlib import Path
+
+from sqlalchemy import delete, func, text
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlmodel import SQLModel, select
+
 from core.db_models import Subdomain
 from core.models import ProcessedResult
 
@@ -15,45 +19,33 @@ DATABASE_URL = "sqlite+aiosqlite:///subx.db"
 
 class StorageManager:
     """
-    Async storage layer for persisting subdomain recon results.
+    Async SQLite storage layer for SubX subdomain recon results.
 
-    Responsibilities:
-        - Create database and tables on first run
-        - Save ProcessedResult from Processor into Subdomain table
-        - Track first_seen / last_seen per subdomain per target
-        - Query subdomains by target, plugin, or date range
-        - Detect new subdomains since last save (diff)
-
-    Usage:
+    Lifecycle:
         storage = StorageManager()
-        await storage.init()
-        await storage.save(processed_result)
+        await storage.init()                               # create tables once
+        new_count = await storage.save(processed, target) # upsert results
+        await storage.close()                             # dispose engine
+
+    All public methods raise RuntimeError if called before init().
     """
 
-    def __init__(self, db_url: str = DATABASE_URL):
-        self.engine: AsyncEngine = create_async_engine(
-            db_url,
-            echo=False,
-            future=True,
-        )
+    def __init__(self, db_url: str = DATABASE_URL) -> None:
+        self.engine: AsyncEngine = create_async_engine(db_url, echo=False, future=True)
         self._session_factory = sessionmaker(
             bind=self.engine,
             class_=AsyncSession,
             expire_on_commit=False,
         )
-        self._init_lock = asyncio.Lock()
+        self._init_lock   = asyncio.Lock()
         self._initialized = False
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
+    # Lifecycle
+    # ──────────────────────────────────────────────────────────────
 
     async def init(self) -> None:
-        """
-        Create database and all tables if they don't exist.
-        Safe to call on every run — no-op if already initialized.
-        Uses a lock to prevent race conditions on concurrent init calls.
-        """
+        """Create all tables if they don't exist. Safe to call on every run."""
         async with self._init_lock:
             if self._initialized:
                 return
@@ -66,41 +58,62 @@ class StorageManager:
                 logger.error("[Storage] Failed to initialize database: %s", e)
                 raise
 
-    async def save(self, result: ProcessedResult) -> int:
-        """
-        Persist all subdomains from a ProcessedResult.
-        For each subdomain:
-            - If new: insert with first_seen = now
-            - If exists: update last_seen = now
+    async def close(self) -> None:
+        """Dispose the engine and release all connections."""
+        await self.engine.dispose()
+        logger.debug("[Storage] Engine disposed.")
 
-        Args:
-            result: ProcessedResult from Processor
+    # ──────────────────────────────────────────────────────────────
+    # Write
+    # ──────────────────────────────────────────────────────────────
+
+    async def save(self, result: ProcessedResult, target: str) -> int:
+        """
+        Upsert all subdomains from a ProcessedResult.
+            - New subdomains   → insert with first_seen = now
+            - Known subdomains → update last_seen = now
 
         Returns:
-            Number of new subdomains inserted.
+            Number of newly inserted subdomains.
         """
         self._ensure_initialized()
 
         new_count = 0
-
         async with self._session() as session:
             async with session.begin():
                 for plugin_name, subdomains in result.by_plugin.items():
-                    inserted = await self._upsert_batch(
-                        session=session,
-                        target=result.target,
-                        subdomains=subdomains,
-                        plugin_name=plugin_name,
+                    new_count += await self._upsert_batch(
+                        session, target, subdomains, plugin_name
                     )
-                    new_count += inserted
 
-        logger.debug("[Storage] Saved %d new subdomains for %s.", new_count, result.target)
+        logger.debug("[Storage] Saved %d new subdomains for %s.", new_count, target)
         return new_count
 
+    async def delete(self, target: str) -> int:
+        """
+        Delete all subdomain records for a target.
+
+        Returns:
+            Number of records deleted.
+        """
+        self._ensure_initialized()
+
+        async with self._session() as session:
+            async with session.begin():
+                result = await session.execute(
+                    delete(Subdomain).where(Subdomain.target == target)
+                )
+
+        count = result.rowcount
+        logger.debug("[Storage] Deleted %d records for %s.", count, target)
+        return count
+
+    # ──────────────────────────────────────────────────────────────
+    # Read
+    # ──────────────────────────────────────────────────────────────
+
     async def get_all(self, target: str) -> list[Subdomain]:
-        """
-        Retrieve all subdomains for a given target, ordered alphabetically.
-        """
+        """All subdomains for a target, sorted alphabetically."""
         self._ensure_initialized()
 
         async with self._session() as session:
@@ -112,10 +125,7 @@ class StorageManager:
             return list(result.scalars().all())
 
     async def get_by_plugin(self, target: str, plugin_name: str) -> list[Subdomain]:
-        """
-        Retrieve subdomains found by a specific plugin for a target,
-        ordered alphabetically.
-        """
+        """Subdomains discovered by a specific plugin for a target."""
         self._ensure_initialized()
 
         async with self._session() as session:
@@ -130,10 +140,7 @@ class StorageManager:
             return list(result.scalars().all())
 
     async def get_new_since(self, target: str, since: datetime) -> list[Subdomain]:
-        """
-        Retrieve subdomains first seen after a given datetime.
-        Useful for diffing between runs.
-        """
+        """Subdomains first seen after a given datetime, newest first."""
         self._ensure_initialized()
 
         async with self._session() as session:
@@ -148,22 +155,23 @@ class StorageManager:
             return list(result.scalars().all())
 
     async def count(self, target: str) -> int:
-        """Return total number of stored subdomains for a target."""
+        """Total number of stored subdomains for a target."""
         self._ensure_initialized()
 
         async with self._session() as session:
             result = await session.execute(
-                select(Subdomain).where(Subdomain.target == target)
+                select(func.count()).where(Subdomain.target == target)
             )
-            return len(result.scalars().all())
+            return result.scalar_one()
 
     async def get_targets_summary(self) -> list[dict]:
         """
-        Retrieve a list of all targets, their total subdomain counts,
-        and the latest last_seen date.
+        All tracked targets with subdomain count and last updated time.
+
+        Returns:
+            [{"target": str, "count": int, "last_updated": datetime | None}]
         """
         self._ensure_initialized()
-        from sqlalchemy import func
 
         async with self._session() as session:
             result = await session.execute(
@@ -175,56 +183,112 @@ class StorageManager:
             )
             return [
                 {
-                    "target": row[0],
-                    "count": row[1],
-                    "last_updated": row[2],
+                    "target":       row[0],
+                    "count":        row[1],
+                    "last_updated": (
+                        datetime.fromisoformat(row[2])
+                        if isinstance(row[2], str) else row[2]
+                    ),
                 }
                 for row in result.all()
             ]
 
-    async def close(self) -> None:
-        """Dispose the engine and release all connections."""
-        await self.engine.dispose()
-        logger.debug("[Storage] Engine disposed.")
+    async def raw_query(self, query: str) -> list[dict]:
+        """
+        Execute a raw SELECT query and return rows as dicts.
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+        Only SELECT statements are accepted — raises ValueError otherwise.
+        Column names are taken from the result cursor description.
+
+        Args:
+            query: Raw SQL SELECT string.
+
+        Returns:
+            List of row dicts keyed by column name.
+
+        Raises:
+            ValueError: if the query is not a SELECT statement.
+            SQLAlchemyError: on execution failure.
+        """
+        self._ensure_initialized()
+
+        if not query.strip().upper().startswith("SELECT"):
+            raise ValueError("raw_query() only accepts SELECT statements.")
+
+        async with self._session() as session:
+            result = await session.execute(text(query))
+            keys = list(result.keys())
+            return [dict(zip(keys, row)) for row in result.fetchall()]
+
+    async def export(self, target: str, output_path: str) -> int:
+        """
+        Export all subdomains for a target to a plain-text file (one per line).
+        Parent directories are created automatically.
+
+        Args:
+            target:      Domain whose subdomains are exported.
+            output_path: Destination file path.
+
+        Returns:
+            Number of subdomains written.
+        """
+        rows = await self.get_all(target)
+
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(row.subdomain for row in rows) + "\n")
+
+        logger.debug(
+            "[Storage] Exported %d subdomains for %s → %s.",
+            len(rows), target, output_path,
+        )
+        return len(rows)
+
 
     def _session(self) -> AsyncSession:
-        """Return a new async session from the factory."""
         return self._session_factory()
 
     def _ensure_initialized(self) -> None:
-        """Guard against calling storage methods before init()."""
         if not self._initialized:
             raise RuntimeError(
-                "StorageManager not initialized. Call `await storage.init()` first."
+                "StorageManager not initialized — call `await storage.init()` first."
             )
 
     async def _upsert_batch(
         self,
-        session: AsyncSession,
-        target: str,
-        subdomains: list[str],
+        session:     AsyncSession,
+        target:      str,
+        subdomains:  list[str],
         plugin_name: str,
     ) -> int:
         """
-        Upsert a batch of subdomains for a given plugin.
-        Insert new ones, update last_seen on existing ones.
+        Upsert a batch of subdomains in exactly two queries:
+            1. SELECT all existing (target, subdomain) matches
+            2. INSERT new rows / UPDATE last_seen on existing rows
 
         Returns:
             Number of newly inserted subdomains.
         """
-        new_count = 0
+        if not subdomains:
+            return 0
+
         now = datetime.now(tz=timezone.utc)
 
-        for subdomain in subdomains:
-            existing = await self._get_existing(session, target, subdomain)
+        result = await session.execute(
+            select(Subdomain).where(
+                Subdomain.target == target,
+                Subdomain.subdomain.in_(subdomains),
+            )
+        )
+        existing: dict[str, Subdomain] = {
+            row.subdomain: row for row in result.scalars().all()
+        }
 
-            if existing:
-                existing.last_seen = now
-                session.add(existing)
+        new_count = 0
+        for subdomain in subdomains:
+            if subdomain in existing:
+                existing[subdomain].last_seen = now
+                session.add(existing[subdomain])
             else:
                 session.add(Subdomain(
                     target=target,
@@ -236,18 +300,3 @@ class StorageManager:
                 new_count += 1
 
         return new_count
-
-    @staticmethod
-    async def _get_existing(
-        session: AsyncSession,
-        target: str,
-        subdomain: str,
-    ) -> Subdomain | None:
-        """Look up an existing Subdomain record by target + subdomain."""
-        result = await session.execute(
-            select(Subdomain).where(
-                Subdomain.target == target,
-                Subdomain.subdomain == subdomain,
-            )
-        )
-        return result.scalars().first()

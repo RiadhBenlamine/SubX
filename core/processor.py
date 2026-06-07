@@ -23,19 +23,21 @@ class Processor:
 
     def __init__(
         self,
-        target: str,
-        scope: list[str] | None = None,
+        scope: list[str],
         out_of_scope: list[str] | None = None,
     ):
         """
         Args:
-            target: root domain being scanned (e.g. telekom.de)
-            scope:  allowed domain suffixes. Defaults to [target].
-            out_of_scope: blacklisted domain suffixes/domains.
+            scope:        required — list of allowed domain suffixes to scan.
+                          e.g. ["telekom.de", "t-mobile.com"]
+            out_of_scope: blacklisted domain suffixes/exact domains.
         """
-        self.target = target
-        self.scope = scope or [target]
+        if not scope:
+            raise ValueError("Processor requires at least one entry in scope.")
+
+        self.scope = scope
         self.out_of_scope = out_of_scope or []
+
         # precompute once — avoids recomputing f-strings on every _in_scope call
         self._scope_suffixes: tuple[str, ...] = tuple(f".{s}" for s in self.scope)
         self._scope_exact: frozenset[str] = frozenset(self.scope)
@@ -88,13 +90,6 @@ class Processor:
         New plugins from incoming are sorted before insertion.
 
         Used after wildcard re-scans to fold results back into the main result.
-
-        Args:
-            base:     the main ProcessedResult to merge into
-            incoming: the wildcard scan ProcessedResult to merge from
-
-        Returns:
-            Updated base ProcessedResult.
         """
         for plugin_name, subs in incoming.by_plugin.items():
             if plugin_name in base.by_plugin:
@@ -133,14 +128,6 @@ class Processor:
         Single-pass classification of raw subdomains into three buckets.
         All buckets use dict for O(1) dedup.
         clean is returned sorted.
-
-        Args:
-            subdomains: raw list from a plugin
-
-        Returns:
-            (clean, wildcards, out_of_scope)
-            clean is already deduped and sorted.
-            wildcards and out_of_scope are deduped dicts.
         """
         clean: dict[str, None] = {}
         wildcards: dict[str, None] = {}
@@ -169,7 +156,6 @@ class Processor:
     def _finalize_wildcards(wildcards: dict[str, None]) -> list[str]:
         """
         Strip the *. prefix (2-char slice, no regex) and sort.
-        Input is already a dict so no further dedup needed.
 
         Example:
             *.mail.telekom.de -> mail.telekom.de
@@ -217,7 +203,6 @@ class Processor:
     ) -> ProcessedResult:
         """Assemble the final ProcessedResult dataclass."""
         return ProcessedResult(
-            target=self.target,
             by_plugin=by_plugin,
             wildcards=wildcards,
             out_of_scope=out_of_scope,

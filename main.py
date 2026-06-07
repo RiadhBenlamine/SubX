@@ -1,23 +1,25 @@
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import typer
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
 from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from core.config_manager import ConfigManager
+from core.logger import setup_logger
+from core.models import ProcessedResult
 from core.plugin_manager import PluginManager
 from core.processor import Processor
 from core.storage_manager import StorageManager
-from core.logger import setup_logger
 
-# ------------------------------------------------------------------
-# App setup
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
+# App / Console
+# ──────────────────────────────────────────────────────────────────
 
 HELP_NAMES = {"help_option_names": ["-h", "--help"]}
 
@@ -31,11 +33,11 @@ app = typer.Typer(
 
 console = Console()
 
-# ------------------------------------------------------------------
-# UI helpers
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
+# UI primitives
+# ──────────────────────────────────────────────────────────────────
 
-def _banner():
+def _banner() -> None:
     console.print(Panel.fit(
         Text.assemble(
             ("░██████╗██╗░░░██╗██████╗░██╗░░██╗\n", "bold cyan"),
@@ -45,35 +47,65 @@ def _banner():
             ("██████╔╝╚██████╔╝██████╦╝██╔╝╚██╗\n", "bold cyan"),
             ("╚═════╝░░╚═════╝░╚═════╝░╚═╝░░╚═╝\n", "bold cyan"),
             ("        subdomain recon framework  ", "dim white"),
+            ("\n                        by ",        "dim white"),
+            ("rbn0x00",                             "bold cyan"),
         ),
         border_style="cyan",
         padding=(0, 2),
     ))
 
 
-def _error(msg: str):
+def _info(msg: str)    -> None: console.print(f"[bold cyan]  ›[/bold cyan]  {msg}")
+def _success(msg: str) -> None: console.print(f"[bold green]  ✔[/bold green]  {msg}")
+def _warn(msg: str)    -> None: console.print(f"[bold yellow]  ⚡[/bold yellow]  {msg}")
+
+def _error(msg: str) -> None:
     console.print(f"[bold red]  ✘[/bold red]  {msg}")
     raise typer.Exit(1)
 
 
-def _info(msg: str):
-    console.print(f"[bold cyan]  ›[/bold cyan]  {msg}")
+# ──────────────────────────────────────────────────────────────────
+# Table builders
+# ──────────────────────────────────────────────────────────────────
 
-
-def _render_subdomains(rows, title: str = "RESULTS"):
+def _make_table(*columns: tuple[str, dict]) -> Table:
+    """Create a styled Rich table from (header, kwargs) column pairs."""
     table = Table(
-        title=title,
         box=box.SIMPLE_HEAD,
         border_style="cyan",
         header_style="bold cyan",
         show_lines=False,
         padding=(0, 2),
     )
-    table.add_column("SUBDOMAIN", style="white", no_wrap=True)
-    table.add_column("SOURCE", style="dim cyan", justify="center")
-    table.add_column("FIRST SEEN", style="dim white", justify="right", no_wrap=True)
-    table.add_column("LAST SEEN", style="dim white", justify="right", no_wrap=True)
+    for header, kwargs in columns:
+        table.add_column(header, **kwargs)
+    return table
 
+
+def _render_db_summary(summaries: list[dict]) -> None:
+    table = _make_table(
+        ("TARGET DOMAIN", {"style": "white",    "no_wrap": True}),
+        ("SUBDOMAINS",    {"style": "green",     "justify": "right"}),
+        ("LAST UPDATED",  {"style": "dim white", "justify": "right", "no_wrap": True}),
+    )
+    table.title = "DATABASE SUMMARY"
+    for s in summaries:
+        last_updated = (
+            s["last_updated"].strftime("%Y-%m-%d %H:%M")
+            if s["last_updated"] else "—"
+        )
+        table.add_row(s["target"], str(s["count"]), last_updated)
+    console.print(table)
+    console.print(f"\n[dim]  {len(summaries)} target(s) tracked.[/dim]\n")
+
+
+def _render_db_rows(rows: list, domain: str) -> None:
+    table = _make_table(
+        ("SUBDOMAIN",  {"style": "white",     "no_wrap": True}),
+        ("SOURCE",     {"style": "dim cyan",  "justify": "center"}),
+        ("FIRST SEEN", {"style": "dim white", "justify": "right", "no_wrap": True}),
+        ("LAST SEEN",  {"style": "dim white", "justify": "right", "no_wrap": True}),
+    )
     for row in rows:
         table.add_row(
             row.subdomain,
@@ -81,87 +113,127 @@ def _render_subdomains(rows, title: str = "RESULTS"):
             row.first_seen.strftime("%Y-%m-%d %H:%M"),
             row.last_seen.strftime("%Y-%m-%d %H:%M"),
         )
+    console.print(table)
+    console.print(f"\n[dim]  {len(rows)} result(s) for {domain}[/dim]\n")
+
+
+def _render_raw_rows(rows: list[dict]) -> None:
+    """Render raw SQL query results as a dynamic Rich table."""
+    if not rows:
+        console.print("[dim]  No results.[/dim]\n")
+        return
+
+    columns = list(rows[0].keys())
+    table = _make_table(*[(col.upper(), {"style": "white", "no_wrap": True}) for col in columns])
+
+    for row in rows:
+        table.add_row(*[str(v) if v is not None else "—" for v in row.values()])
 
     console.print(table)
-    console.print(f"\n[dim]  {len(rows)} result(s)[/dim]\n")
+    console.print(f"\n[dim]  {len(rows)} row(s) returned.[/dim]\n")
 
 
-def _render_enum_results(processed, new_count: int, save: bool):
-    table = Table(
-        box=box.SIMPLE_HEAD,
-        border_style="cyan",
-        header_style="bold cyan",
-        show_lines=False,
-        padding=(0, 2),
+def _render_enum_results(
+    processed_by_target: dict[str, dict],
+    save: bool,
+) -> None:
+    """Render per-target subdomain table + summary panel."""
+    for target, data in processed_by_target.items():
+        processed: ProcessedResult = data["processed"]
+        new_count: int             = data["new_count"]
+
+        console.print(f"\n[bold cyan]─── {target} ───[/bold cyan]")
+
+        table = _make_table(
+            ("SUBDOMAIN", {"style": "white",    "no_wrap": True}),
+            ("SOURCE",    {"style": "dim cyan", "justify": "right"}),
+        )
+        for plugin_name, subs in processed.by_plugin.items():
+            for sub in subs:
+                table.add_row(sub, plugin_name)
+        console.print(table)
+        console.print()
+
+        summary = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        summary.add_column(style="dim white")
+        summary.add_column(style="bold white")
+
+        for plugin_name, subs in processed.by_plugin.items():
+            summary.add_row(f"[{plugin_name}]", str(len(subs)))
+
+        if processed.wildcards:
+            summary.add_row("[wildcards re-scanned]", str(len(processed.wildcards)))
+
+        summary.add_row("──────────────────", "──────")
+        summary.add_row("Total unique", str(processed.total))
+
+        if save:
+            summary.add_row("New this run", f"[bold green]{new_count}[/bold green]")
+
+        console.print(Panel(
+            summary,
+            title=f"[bold cyan]Summary — {target}[/bold cyan]",
+            border_style="cyan",
+        ))
+
+
+# ──────────────────────────────────────────────────────────────────
+# Output helpers
+# ──────────────────────────────────────────────────────────────────
+
+def _write_output(values: list[str], output: str, separator: str = "\n") -> None:
+    """
+    Write a list of string values to a file joined by separator.
+    Parent directories are auto-created.
+
+    Args:
+        values:    list of strings to write (e.g. subdomain names)
+        output:    destination file path
+        separator: string separator between values (default: newline)
+    """
+    out = Path(output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Unescape common escape sequences passed as CLI strings
+    sep = separator.replace("\\n", "\n").replace("\\t", "\t")
+    out.write_text(sep.join(values) + "\n")
+    _success(
+        f"Saved [bold white]{len(values)}[/bold white] entries → "
+        f"[bold white]{output}[/bold white]  "
+        f"[dim](sep: {repr(sep)})[/dim]"
     )
-    table.add_column("SUBDOMAIN", style="white", no_wrap=True)
-    table.add_column("SOURCE", style="dim cyan", justify="right")
-
-    for plugin_name, subs in processed.by_plugin.items():
-        for sub in subs:
-            table.add_row(sub, plugin_name)
-
-    console.print(table)
-    console.print()
-
-    summary = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
-    summary.add_column(style="dim white")
-    summary.add_column(style="bold white")
-
-    for plugin_name, subs in processed.by_plugin.items():
-        summary.add_row(f"[{plugin_name}]", str(len(subs)))
-
-    if processed.wildcards:
-        summary.add_row("[Wildcards re-scanned]", str(len(processed.wildcards)))
-
-    summary.add_row("──────────────────", "──────")
-    summary.add_row("Total unique", str(processed.total))
-
-    if save:
-        summary.add_row("New this run", f"[bold green]{new_count}[/bold green]")
-
-    console.print(Panel(summary, title="[bold cyan]Summary[/bold cyan]", border_style="cyan"))
 
 
-# ------------------------------------------------------------------
-# subx enum -c config.yaml
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
+# Enum command
+# ──────────────────────────────────────────────────────────────────
 
 @app.command("enum", context_settings=HELP_NAMES)
 def enum(
     config_file: str = typer.Option(..., "-c", "--config", help="Path to YAML/JSON config file."),
-    save: bool = typer.Option(True, "--save/--no-save", help="Save results to database."),
-):
-    """[bold cyan]Enumerate subdomains[/bold cyan] for a target domain."""
+    save: bool       = typer.Option(True, "--save/--no-save", help="Save results to database."),
+) -> None:
+    """[bold cyan]Enumerate subdomains[/bold cyan] for target domain(s)."""
     asyncio.run(_enum(config_file, save))
 
 
-async def _enum(config_file: str, save: bool):
+async def _enum(config_file: str, save: bool) -> None:
     _banner()
     setup_logger()
 
     try:
         config = ConfigManager(config_path=config_file)
-    except FileNotFoundError:
-        _error(f"Config file not found: {config_file}")
+    except (FileNotFoundError, ValueError) as e:
+        _error(str(e))
     except Exception as e:
         _error(f"Failed to load config: {e}")
 
-    if not config.get_target():
-        _error("No target defined. Add 'target: example.com' to your config file.")
+    scope = config.get_scope()
 
-    target = config.get_target()
-    scope  = config.get_scope()
-
-    _info(f"Target  : [bold white]{target}[/bold white]")
     _info(f"Scope   : [bold white]{', '.join(scope)}[/bold white]")
-
     if config.get_out_of_scope():
         _info(f"OOS     : [bold white]{', '.join(config.get_out_of_scope())}[/bold white]")
-
     if config.get_sources():
         _info(f"Sources : [bold white]{', '.join(config.get_sources())}[/bold white]")
-
     console.print()
 
     pm = PluginManager(config.get_api_keys())
@@ -173,97 +245,168 @@ async def _enum(config_file: str, save: bool):
     _info(f"Plugins : [bold white]{', '.join(p.__class__.__name__ for p in pm.loaded_plugins)}[/bold white]")
     console.print()
 
-    processor = Processor(target=target, scope=scope, out_of_scope=config.get_out_of_scope())
+    processor = Processor(scope=scope, out_of_scope=config.get_out_of_scope())
 
-    with console.status("[cyan]Running plugins...[/cyan]", spinner="dots"):
-        raw_results = await pm.execute_plugins(target)
-
-    processed = processor.process(raw_results)
-
-    if processor.has_wildcards(processed):
-        wc_domains = processor.extract_wildcard_domains(processed)
-        console.print(f"\n[bold yellow]  ⚡ Wildcards found:[/bold yellow] {', '.join(wc_domains)}")
-
-        with console.status("[yellow]Re-scanning wildcard domains...[/yellow]", spinner="dots"):
-            wc_results_all = await asyncio.gather(*[
-                pm.execute_plugins(wc) for wc in wc_domains
-            ])
-
-        for wc_raw in wc_results_all:
-            processed = processor.merge(processed, processor.process(wc_raw))
-
-    new_count = 0
+    storage: StorageManager | None = None
     if save:
         storage = StorageManager()
         await storage.init()
-        with console.status("[cyan]Saving to database...[/cyan]", spinner="dots"):
-            new_count = await storage.save(processed)
+
+    processed_by_target: dict[str, dict] = {}
+
+    for domain in scope:
+        processed = await _run_domain(pm, processor, domain)
+
+        new_count = 0
+        if storage:
+            with console.status(f"[cyan]Saving {domain}...[/cyan]", spinner="dots"):
+                new_count = await storage.save(processed, target=domain)
+
+        processed_by_target[domain] = {"processed": processed, "new_count": new_count}
+
+    if storage:
         await storage.close()
 
     console.print()
-    _render_enum_results(processed, new_count, save)
+    _render_enum_results(processed_by_target, save)
 
 
-# ------------------------------------------------------------------
-# subx db
-# subx db -d <domain>
-# subx db -d <domain> --filter-plugin <plugin>
-# subx db -d <domain> --new-since <YYYY-MM-DD>
-# ------------------------------------------------------------------
+async def _run_domain(
+    pm:        PluginManager,
+    processor: Processor,
+    domain:    str,
+) -> ProcessedResult:
+    """Run all plugins against a domain, handle wildcard re-scanning."""
+    with console.status(f"[cyan]Running plugins for {domain}...[/cyan]", spinner="dots"):
+        raw = await pm.execute_plugins(domain)
+
+    processed = processor.process(raw)
+
+    if not processor.has_wildcards(processed):
+        return processed
+
+    wc_domains = processor.extract_wildcard_domains(processed)
+    _warn(f"Wildcards found for {domain}: {', '.join(wc_domains)}")
+
+    with console.status("[yellow]Re-scanning wildcard domains...[/yellow]", spinner="dots"):
+        wc_batches = await asyncio.gather(*[pm.execute_plugins(wc) for wc in wc_domains])
+
+    for wc_raw in wc_batches:
+        processed = processor.merge(processed, processor.process(wc_raw))
+
+    return processed
+
+
+# ──────────────────────────────────────────────────────────────────
+# DB command
+# ──────────────────────────────────────────────────────────────────
 
 @app.command("db", context_settings=HELP_NAMES)
 def db(
-    domain: Optional[str] = typer.Option(None, "-d", "--domain", help="Target domain to query. Omit to list all tracked domains."),
-    filter_plugin: Optional[str] = typer.Option(None, "--filter-plugin", help="Filter results by plugin name."),
-    new_since: Optional[str] = typer.Option(None, "--new-since", help="Show subdomains first seen after date (YYYY-MM-DD)."),
-):
-    """[bold cyan]Query stored subdomains[/bold cyan] or view a database summary."""
-    asyncio.run(_db_query(domain, filter_plugin, new_since))
+    domain:        Optional[str] = typer.Option(None,  "-d", "--domain",       help="Target domain. Omit to list all tracked domains."),
+    filter_plugin: Optional[str] = typer.Option(None,  "--filter-plugin",       help="Filter results by plugin name."),
+    new_since:     Optional[str] = typer.Option(None,  "--new-since",           help="Show subdomains first seen after YYYY-MM-DD."),
+    delete:        bool          = typer.Option(False, "--delete",               help="Delete all records for the target domain."),
+    output_n:      Optional[str] = typer.Option(None,  "-oN",                   help="Save subdomains to file (one per line)."),
+    output_x:      Optional[str] = typer.Option(None,  "-oX",                   help="Save subdomains to file with custom separator. Use -oX '<sep>:<file>' e.g. ' :out.txt' or ';:out.txt'"),
+    raw_query:     Optional[str] = typer.Option(None,  "-C", "--custom-query",  help="Run a raw SELECT query against the DB. e.g. -C \"SELECT subdomain FROM subdomain WHERE target='x.com'\""),
+) -> None:
+    """
+    [bold cyan]Query stored subdomains[/bold cyan] or view a database summary.
+
+    \b
+    Examples:
+      subx db                                          # summary of all targets
+      subx db -d telekom.de                            # list all subdomains
+      subx db -d telekom.de -oN subs.txt               # save one per line
+      subx db -d telekom.de -oX ';:subs.txt'           # save semicolon-separated
+      subx db -d telekom.de -oX ' :subs.txt'           # save space-separated
+      subx db -d telekom.de --filter-plugin ViewDns    # filter by plugin
+      subx db -d telekom.de --new-since 2025-06-01     # new since date
+      subx db -C "SELECT subdomain FROM subdomain WHERE target='telekom.de' LIMIT 10"
+      subx db -C "SELECT ..." -oX ';:out.txt'          # query + custom output
+    """
+    asyncio.run(_db(domain, filter_plugin, new_since, delete, output_n, output_x, raw_query))
+
+
+async def _db(
+    domain:        Optional[str],
+    filter_plugin: Optional[str],
+    new_since:     Optional[str],
+    delete:        bool,
+    output_n:      Optional[str],
+    output_x:      Optional[str],
+    raw_query:     Optional[str],
+) -> None:
+    _banner()
+    storage = StorageManager()
+    await storage.init()
+    try:
+        await _db_dispatch(storage, domain, filter_plugin, new_since, delete, output_n, output_x, raw_query)
+    finally:
+        await storage.close()
+
+
+async def _db_dispatch(
+    storage:       StorageManager,
+    domain:        Optional[str],
+    filter_plugin: Optional[str],
+    new_since:     Optional[str],
+    delete:        bool,
+    output_n:      Optional[str],
+    output_x:      Optional[str],
+    raw_query:     Optional[str],
+) -> None:
+    """Route db subcommand to the correct handler."""
+
+    # ── Raw SQL query mode ────────────────────────────────────────
+    if raw_query:
+        await _db_raw_query(storage, raw_query, output_n, output_x)
+        return
+
+    # ── No domain → summary ───────────────────────────────────────
+    if not domain:
+        if any([delete, filter_plugin, new_since, output_n, output_x]):
+            _error("Filters and output flags require -d <domain>.")
+        await _db_summary(storage)
+        return
+
+    # ── Delete mode ───────────────────────────────────────────────
+    if delete:
+        if output_n or output_x:
+            _warn("-oN / -oX are ignored when using --delete.")
+        await _db_delete(storage, domain)
+        return
+
+    # ── Query mode ────────────────────────────────────────────────
+    await _db_query(storage, domain, filter_plugin, new_since, output_n, output_x)
+
+
+async def _db_summary(storage: StorageManager) -> None:
+    summaries = await storage.get_targets_summary()
+    if not summaries:
+        console.print("[dim]  No targets stored in the database yet.[/dim]\n")
+        return
+    _render_db_summary(summaries)
+
+
+async def _db_delete(storage: StorageManager, domain: str) -> None:
+    count = await storage.delete(domain)
+    if count == 0:
+        console.print(f"[dim]  No records found for[/dim] [bold white]{domain}[/bold white]\n")
+    else:
+        _success(f"Deleted [bold white]{count}[/bold white] records for [bold white]{domain}[/bold white]")
 
 
 async def _db_query(
-    domain: Optional[str],
+    storage:       StorageManager,
+    domain:        str,
     filter_plugin: Optional[str],
-    new_since: Optional[str],
-):
-    _banner()
-
-    storage = StorageManager()
-    await storage.init()
-
-    # No domain — show summary of all tracked targets
-    if not domain:
-        summaries = await storage.get_targets_summary()
-        await storage.close()
-
-        if not summaries:
-            console.print("[dim]  No targets stored in the database yet.[/dim]\n")
-            return
-
-        table = Table(
-            title="DATABASE SUMMARY",
-            box=box.SIMPLE_HEAD,
-            border_style="cyan",
-            header_style="bold cyan",
-            show_lines=False,
-            padding=(0, 2),
-        )
-        table.add_column("TARGET DOMAIN", style="white", no_wrap=True)
-        table.add_column("SUBDOMAINS", style="green", justify="right")
-        table.add_column("LAST UPDATED", style="dim white", justify="right", no_wrap=True)
-
-        for s in summaries:
-            last_updated = (
-                s["last_updated"].strftime("%Y-%m-%d %H:%M")
-                if s["last_updated"] else "Never"
-            )
-            table.add_row(s["target"], str(s["count"]), last_updated)
-
-        console.print(table)
-        console.print(f"\n[dim]  {len(summaries)} target(s) tracked.[/dim]\n")
-        return
-
-    # Domain provided — query with optional filters
+    new_since:     Optional[str],
+    output_n:      Optional[str],
+    output_x:      Optional[str],
+) -> None:
+    """Fetch, display, and optionally export subdomains with optional filters."""
     if filter_plugin:
         rows = await storage.get_by_plugin(domain, filter_plugin)
         _info(f"Target : [bold white]{domain}[/bold white]  Plugin : [bold white]{filter_plugin}[/bold white]")
@@ -272,7 +415,6 @@ async def _db_query(
         try:
             since_dt = datetime.strptime(new_since, "%Y-%m-%d")
         except ValueError:
-            await storage.close()
             _error("Invalid date format. Use YYYY-MM-DD.")
             return
         rows = await storage.get_new_since(domain, since_dt)
@@ -282,19 +424,96 @@ async def _db_query(
         rows = await storage.get_all(domain)
         _info(f"Target : [bold white]{domain}[/bold white]")
 
-    await storage.close()
     console.print()
 
     if not rows:
         console.print(f"[dim]  No subdomains found for[/dim] [bold white]{domain}[/bold white]\n")
         return
 
-    _render_subdomains(rows)
+    _render_db_rows(rows, domain)
+
+    subdomains = [row.subdomain for row in rows]
+
+    # -oN: plain newline-separated file
+    if output_n:
+        _write_output(subdomains, output_n, separator="\n")
+
+    # -oX '<sep>:<file>'
+    if output_x:
+        sep, file = _parse_ox(output_x)
+        _write_output(subdomains, file, separator=sep)
 
 
-# ------------------------------------------------------------------
+async def _db_raw_query(
+    storage:  StorageManager,
+    query:    str,
+    output_n: Optional[str],
+    output_x: Optional[str],
+) -> None:
+    """
+    Execute a raw SELECT query and display + optionally export results.
+    Only SELECT statements are permitted.
+    """
+    q = query.strip()
+    if not q.upper().startswith("SELECT"):
+        _error("Only SELECT queries are allowed with -C.")
+
+    _info(f"Query : [dim white]{q}[/dim white]")
+    console.print()
+
+    rows = await storage.raw_query(q)
+
+    if not rows:
+        console.print("[dim]  No results.[/dim]\n")
+        return
+
+    _render_raw_rows(rows)
+
+    # Extract first column values for -oN / -oX output
+    first_col = list(rows[0].keys())[0]
+    values = [str(row[first_col]) for row in rows if row.get(first_col) is not None]
+
+    if output_n:
+        _write_output(values, output_n, separator="\n")
+
+    if output_x:
+        sep, file = _parse_ox(output_x)
+        _write_output(values, file, separator=sep)
+
+
+# ──────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────
+
+def _parse_ox(value: str) -> tuple[str, str]:
+    """
+    Parse -oX argument in format '<separator>:<filepath>'.
+
+    The separator is everything before the LAST colon,
+    the filepath is everything after it.
+
+    Examples:
+        ' :out.txt'    → (' ', 'out.txt')
+        ';:out.txt'    → (';', 'out.txt')
+        '\\n:out.txt'  → ('\\n', 'out.txt')
+        ',,:subs.txt'  → (',,', 'subs.txt')
+
+    Raises typer.Exit(1) if format is invalid.
+    """
+    idx = value.rfind(":")
+    if idx == -1 or idx == len(value) - 1:
+        _error(
+            "-oX format is '<separator>:<file>'  e.g.  ';:out.txt'  or  ' :out.txt'\n"
+            "  The separator comes before the last colon, the file path after it."
+        )
+    sep  = value[:idx]
+    file = value[idx + 1:]
+    return sep, file
+
+
+# ──────────────────────────────────────────────────────────────────
 # Entry
-# ------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app()
