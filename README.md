@@ -81,6 +81,19 @@ Filter subdomains that were first seen after a specific date (YYYY-MM-DD):
 uv run python main.py db -d example.com --new-since 2026-06-01
 ```
 ---
+### Export DB to file
+Get output into a file
+```bash
+uv run python main.py db -d example.com -oN subs.txt
+```
+Get the output costumized using you own queries
+```bash
+uv run python main.py db -C "SELECT subdomain FROM subdomain WHERE target='example.com' LIMIT 10"
+```
+Get the output, but in different format seperated by ;   YOU CAN CHANGE IT AS YOU WISH
+```bash
+uv run python main.py db -d example.com ';:subs.txt
+```
 ## License 📄
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
