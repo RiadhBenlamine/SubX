@@ -1,0 +1,31 @@
+# SubX Configuration File
+
+scope:
+  - google.com
+  - googlecontent.app
+
+
+out_of_scope:
+#  - something.google.com
+
+# Remove sources to run all plugins
+sources:
+  - ShodanPlugin
+  - AlienVaultPlugin
+  - UrlscanPlugin
+  - VirustotalPlugin
+  - ChaosPlugin
+  - HackerTargetPlugin
+  - AnubisDbPlugin
+  - BevigilPlugin
+  - ViewDnsPlugin
+  - BgpPlugin
+
+api_keys:
+  SHODAN_API: <api>
+  VIRUSTOTAL_API: <api>
+  OTX_API: <api>
+  URLSCAN_API: <api>
+  CHAOS_API: <api>
+  BEVIGIL_API: <api>
+  VIEWDNS_API: <api>
