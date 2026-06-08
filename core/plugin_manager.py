@@ -18,22 +18,25 @@ class PluginManager:
     Lifecycle:
         1. load_plugins()    — discover and instantiate all valid plugins
         2. execute_plugins() — run all loaded plugins concurrently against a target
+
+    Plugins with an empty required_keys() are always loaded (no API key needed).
+    Plugins with required_keys() that are missing from config are skipped with a warning.
     """
 
     def __init__(self, config: dict):
-        self.config = config
-        self.plugins_path = pathlib.Path(__file__).parent.parent / "plugins"
+        self.config         = config
+        self.plugins_path   = pathlib.Path(__file__).parent.parent / "plugins"
         self.loaded_plugins: list[Plugin] = []
-        self._lock = Lock()
+        self._lock          = Lock()
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
     # Public API
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
 
     def load_plugins(self, allowed: list[str] | None = None) -> None:
         """
         Discover and load all valid Plugin subclasses from the plugins directory.
-        Thread-safe. Skips already-loaded state, unconfigured plugins, and bad imports.
+        Thread-safe. No-op if plugins are already loaded.
 
         Args:
             allowed: optional whitelist of plugin class names.
@@ -50,17 +53,24 @@ class PluginManager:
                     continue
 
                 for plugin in self._extract_plugins(module):
-                    if allowed is not None and plugin.__class__.__name__ not in allowed:
-                        logger.debug(
-                            "[PluginManager] Skipping %s — not in allowed sources.",
-                            plugin.__class__.__name__,
+                    name = plugin.__class__.__name__
+
+                    # Whitelist filter
+                    if allowed is not None and name not in allowed:
+                        logger.debug("[PluginManager] Skipping %s — not in allowed sources.", name)
+                        continue
+
+                    # Key check — plugins with no required keys always pass
+                    missing = self._missing_keys(plugin)
+                    if missing:
+                        logger.warning(
+                            "[PluginManager] Skipping %s — missing config key(s): %s",
+                            name, missing,
                         )
                         continue
 
-                    if self._is_configured(plugin):
-                        self.loaded_plugins.append(plugin)
-                    else:
-                        self._warn_missing_keys(plugin)
+                    self.loaded_plugins.append(plugin)
+                    logger.debug("[PluginManager] Loaded %s.", name)
 
             logger.info(
                 "[PluginManager] Loaded %d plugin(s): %s",
@@ -99,9 +109,9 @@ class PluginManager:
 
         return results
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
     # Discovery
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
 
     def _discover_modules(self) -> list[pathlib.Path]:
         """
@@ -113,15 +123,12 @@ class PluginManager:
             if not path.name.startswith("_")
         ]
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
     # Import
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
 
     def _import_module(self, path: pathlib.Path):
-        """
-        Dynamically import a module by path.
-        Returns the module on success, None on failure.
-        """
+        """Dynamically import a module by path. Returns None on failure."""
         module_name = f"plugins.{path.stem}"
         try:
             return importlib.import_module(module_name)
@@ -129,9 +136,9 @@ class PluginManager:
             logger.warning("[PluginManager] Failed to import '%s': %s", module_name, e)
             return None
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
     # Extraction
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
 
     def _extract_plugins(self, module) -> list[Plugin]:
         """
@@ -139,14 +146,12 @@ class PluginManager:
         defined in that module (not merely imported into it).
         """
         plugins = []
-
-        for name, cls in inspect.getmembers(module, inspect.isclass):
+        for _, cls in inspect.getmembers(module, inspect.isclass):
             if not self._is_valid_plugin(cls, module):
                 continue
-            instance = self._instantiate(name, cls)
+            instance = self._instantiate(cls)
             if instance is not None:
                 plugins.append(instance)
-
         return plugins
 
     @staticmethod
@@ -158,37 +163,35 @@ class PluginManager:
             and cls.__module__ == module.__name__
         )
 
-    def _instantiate(self, name: str, cls) -> Plugin | None:
+    def _instantiate(self, cls) -> Plugin | None:
         """Instantiate a plugin with the current config. Returns None on failure."""
         try:
             return cls(self.config)
         except Exception as e:
-            logger.warning("[PluginManager] Failed to instantiate '%s': %s", name, e)
+            logger.warning("[PluginManager] Failed to instantiate '%s': %s", cls.__name__, e)
             return None
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
     # Configuration validation
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────────
 
-    def _is_configured(self, plugin: Plugin) -> bool:
+    def _missing_keys(self, plugin: Plugin) -> list[str]:
         """
-        Check that all required API keys declared by the plugin
-        are present and non-empty in the config.
-        Plugins with no required_keys always pass.
-        """
-        return all(
-            self.config.get(key) not in (None, "")
-            for key in plugin.required_keys
-        )
+        Return a list of required keys that are absent or empty in config.
+        Returns [] for plugins that need no API keys — they always load.
 
-    def _warn_missing_keys(self, plugin: Plugin) -> None:
-        """Log a warning listing which required keys are missing for a plugin."""
-        missing = [
-            key for key in plugin.required_keys
-            if not self.config.get(key)
-        ]
-        logger.warning(
-            "[PluginManager] Skipping %s — missing config keys: %s",
-            plugin.__class__.__name__,
-            missing,
-        )
+        Handles both property and method style required_keys definitions.
+        """
+        try:
+            keys = plugin.required_keys
+            # If defined as a method rather than a property, call it
+            if callable(keys):
+                keys = keys()
+        except Exception as e:
+            logger.warning(
+                "[PluginManager] Could not read required_keys from %s: %s",
+                plugin.__class__.__name__, e,
+            )
+            return []
+
+        return [k for k in keys if self.config.get(k) in (None, "")]
