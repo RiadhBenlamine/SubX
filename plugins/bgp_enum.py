@@ -35,6 +35,6 @@ class BgpPlugin(Plugin):
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 logger.error("[BgpPlugin] Attempt %d failed (%s): %s", attempt + 1, type(e).__name__, e)
-                await asyncio.sleep(2 ** attempt)  # backoff: 1s, 2s, 4s
+                await asyncio.sleep(2 ** attempt)
 
         return subdomains
