@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import aiohttp
 from core.plugin import Plugin
@@ -14,8 +15,9 @@ class HackerTargetPlugin(Plugin):
                 async with session.get(f'{self.api}{domain}') as response:
                     if response.status == 200:
                         data = await response.text()
+                        if data == "API count exceeded - Increase Quota with Membership":
+                            logger.warning(" API count exceeded")
                         subdomains = [line.split(',')[0] for line in data.splitlines()]
-                    logger.warning("[HackerTarget] Got different status code")
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.error("[HackerTarget] Connection error, skipping: %s", e)
