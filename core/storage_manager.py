@@ -255,36 +255,45 @@ class StorageManager:
             )
 
     async def _upsert_batch(
-        self,
-        session:     AsyncSession,
-        target:      str,
-        subdomains:  list[str],
-        plugin_name: str,
+            self,
+            session: AsyncSession,
+            target: str,
+            subdomains: list[str],
+            plugin_name: str,
     ) -> int:
-        """
-        Upsert a batch of subdomains in exactly two queries:
-            1. SELECT all existing (target, subdomain) matches
-            2. INSERT new rows / UPDATE last_seen on existing rows
 
-        Returns:
-            Number of newly inserted subdomains.
-        """
         if not subdomains:
             return 0
 
         now = datetime.now(tz=timezone.utc)
 
-        result = await session.execute(
-            select(Subdomain).where(
-                Subdomain.target == target,
-                Subdomain.subdomain.in_(subdomains),
-            )
-        )
-        existing: dict[str, Subdomain] = {
-            row.subdomain: row for row in result.scalars().all()
-        }
+        chunk_size = 450  # safe under SQLite variable limit
 
+        existing: dict[str, Subdomain] = {}
+
+        # ─────────────────────────────────────────────
+        # 1. Chunked SELECT (fixes SQLite variable limit)
+        # ─────────────────────────────────────────────
+        for i in range(0, len(subdomains), chunk_size):
+            batch = subdomains[i:i + chunk_size]
+
+            result = await session.execute(
+                select(Subdomain).where(
+                    Subdomain.target == target,
+                    Subdomain.subdomain.in_(batch),
+                )
+            )
+
+            existing.update({
+                row.subdomain: row
+                for row in result.scalars().all()
+            })
+
+        # ─────────────────────────────────────────────
+        # 2. Upsert logic (unchanged)
+        # ─────────────────────────────────────────────
         new_count = 0
+
         for subdomain in subdomains:
             if subdomain in existing:
                 existing[subdomain].last_seen = now
