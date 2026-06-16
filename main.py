@@ -17,10 +17,6 @@ from core.plugin_manager import PluginManager
 from core.processor import Processor
 from core.storage_manager import StorageManager
 
-# ──────────────────────────────────────────────────────────────────
-# App / Console
-# ──────────────────────────────────────────────────────────────────
-
 HELP_NAMES = {"help_option_names": ["-h", "--help"]}
 
 app = typer.Typer(
@@ -33,9 +29,6 @@ app = typer.Typer(
 
 console = Console()
 
-# ──────────────────────────────────────────────────────────────────
-# UI primitives
-# ──────────────────────────────────────────────────────────────────
 
 def _banner() -> None:
     console.print(Panel.fit(
@@ -64,12 +57,7 @@ def _error(msg: str) -> None:
     raise typer.Exit(1)
 
 
-# ──────────────────────────────────────────────────────────────────
-# Table builders
-# ──────────────────────────────────────────────────────────────────
-
 def _make_table(*columns: tuple[str, dict]) -> Table:
-    """Create a styled Rich table from (header, kwargs) column pairs."""
     table = Table(
         box=box.SIMPLE_HEAD,
         border_style="cyan",
@@ -118,7 +106,6 @@ def _render_db_rows(rows: list, domain: str) -> None:
 
 
 def _render_raw_rows(rows: list[dict]) -> None:
-    """Render raw SQL query results as a dynamic Rich table."""
     if not rows:
         console.print("[dim]  No results.[/dim]\n")
         return
@@ -137,10 +124,9 @@ def _render_enum_results(
     processed_by_target: dict[str, dict],
     save: bool,
 ) -> None:
-    """Render per-target subdomain table + summary panel."""
     for target, data in processed_by_target.items():
         processed: ProcessedResult = data["processed"]
-        new_count: int             = data["new_count"]
+        new_count: int = data["new_count"]
 
         console.print(f"\n[bold cyan]─── {target} ───[/bold cyan]")
 
@@ -177,23 +163,9 @@ def _render_enum_results(
         ))
 
 
-# ──────────────────────────────────────────────────────────────────
-# Output helpers
-# ──────────────────────────────────────────────────────────────────
-
 def _write_output(values: list[str], output: str, separator: str = "\n") -> None:
-    """
-    Write a list of string values to a file joined by separator.
-    Parent directories are auto-created.
-
-    Args:
-        values:    list of strings to write (e.g. subdomain names)
-        output:    destination file path
-        separator: string separator between values (default: newline)
-    """
     out = Path(output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    # Unescape common escape sequences passed as CLI strings
     sep = separator.replace("\\n", "\n").replace("\\t", "\t")
     out.write_text(sep.join(values) + "\n")
     _success(
@@ -202,10 +174,6 @@ def _write_output(values: list[str], output: str, separator: str = "\n") -> None
         f"[dim](sep: {repr(sep)})[/dim]"
     )
 
-
-# ──────────────────────────────────────────────────────────────────
-# Enum command
-# ──────────────────────────────────────────────────────────────────
 
 @app.command("enum", context_settings=HELP_NAMES)
 def enum(
@@ -247,21 +215,22 @@ async def _enum(config_file: str, save: bool) -> None:
 
     processor = Processor(scope=scope, out_of_scope=config.get_out_of_scope())
 
-    storage: StorageManager | None = None
+    storage = None
     if save:
         storage = StorageManager()
         await storage.init()
 
+    # Run all domains concurrently
+    domain_results = await asyncio.gather(
+        *(_run_domain(pm, processor, domain) for domain in scope)
+    )
+
     processed_by_target: dict[str, dict] = {}
-
-    for domain in scope:
-        processed = await _run_domain(pm, processor, domain)
-
+    for domain, processed in zip(scope, domain_results):
         new_count = 0
         if storage:
             with console.status(f"[cyan]Saving {domain}...[/cyan]", spinner="dots"):
                 new_count = await storage.save(processed, target=domain)
-
         processed_by_target[domain] = {"processed": processed, "new_count": new_count}
 
     if storage:
@@ -272,11 +241,10 @@ async def _enum(config_file: str, save: bool) -> None:
 
 
 async def _run_domain(
-    pm:        PluginManager,
+    pm: PluginManager,
     processor: Processor,
-    domain:    str,
+    domain: str,
 ) -> ProcessedResult:
-    """Run all plugins against a domain, handle wildcard re-scanning."""
     with console.status(f"[cyan]Running plugins for {domain}...[/cyan]", spinner="dots"):
         raw = await pm.execute_plugins(domain)
 
@@ -289,17 +257,13 @@ async def _run_domain(
     _warn(f"Wildcards found for {domain}: {', '.join(wc_domains)}")
 
     with console.status("[yellow]Re-scanning wildcard domains...[/yellow]", spinner="dots"):
-        wc_batches = await asyncio.gather(*[pm.execute_plugins(wc) for wc in wc_domains])
+        wc_batches = await asyncio.gather(*(pm.execute_plugins(wc) for wc in wc_domains))
 
     for wc_raw in wc_batches:
         processed = processor.merge(processed, processor.process(wc_raw))
 
     return processed
 
-
-# ──────────────────────────────────────────────────────────────────
-# DB command
-# ──────────────────────────────────────────────────────────────────
 
 @app.command("db", context_settings=HELP_NAMES)
 def db(
@@ -311,7 +275,7 @@ def db(
     output_x:      Optional[str] = typer.Option(None,  "-oX",                   help="Save subdomains to file with custom separator. Use -oX '<sep>:<file>' e.g. ' :out.txt' or ';:out.txt'"),
     raw_query:     Optional[str] = typer.Option(None,  "-C", "--custom-query",  help="Run a raw SELECT query against the DB. e.g. -C \"SELECT subdomain FROM subdomain WHERE target='x.com'\""),
 ) -> None:
-    """
+    """\
     [bold cyan]Query stored subdomains[/bold cyan] or view a database summary.
 
     \b
@@ -330,13 +294,13 @@ def db(
 
 
 async def _db(
-    domain:        Optional[str],
+    domain: Optional[str],
     filter_plugin: Optional[str],
-    new_since:     Optional[str],
-    delete:        bool,
-    output_n:      Optional[str],
-    output_x:      Optional[str],
-    raw_query:     Optional[str],
+    new_since: Optional[str],
+    delete: bool,
+    output_n: Optional[str],
+    output_x: Optional[str],
+    raw_query: Optional[str],
 ) -> None:
     _banner()
     storage = StorageManager()
@@ -348,37 +312,31 @@ async def _db(
 
 
 async def _db_dispatch(
-    storage:       StorageManager,
-    domain:        Optional[str],
+    storage: StorageManager,
+    domain: Optional[str],
     filter_plugin: Optional[str],
-    new_since:     Optional[str],
-    delete:        bool,
-    output_n:      Optional[str],
-    output_x:      Optional[str],
-    raw_query:     Optional[str],
+    new_since: Optional[str],
+    delete: bool,
+    output_n: Optional[str],
+    output_x: Optional[str],
+    raw_query: Optional[str],
 ) -> None:
-    """Route db subcommand to the correct handler."""
-
-    # ── Raw SQL query mode ────────────────────────────────────────
     if raw_query:
         await _db_raw_query(storage, raw_query, output_n, output_x)
         return
 
-    # ── No domain → summary ───────────────────────────────────────
     if not domain:
         if any([delete, filter_plugin, new_since, output_n, output_x]):
             _error("Filters and output flags require -d <domain>.")
         await _db_summary(storage)
         return
 
-    # ── Delete mode ───────────────────────────────────────────────
     if delete:
         if output_n or output_x:
             _warn("-oN / -oX are ignored when using --delete.")
         await _db_delete(storage, domain)
         return
 
-    # ── Query mode ────────────────────────────────────────────────
     await _db_query(storage, domain, filter_plugin, new_since, output_n, output_x)
 
 
@@ -399,14 +357,13 @@ async def _db_delete(storage: StorageManager, domain: str) -> None:
 
 
 async def _db_query(
-    storage:       StorageManager,
-    domain:        str,
+    storage: StorageManager,
+    domain: str,
     filter_plugin: Optional[str],
-    new_since:     Optional[str],
-    output_n:      Optional[str],
-    output_x:      Optional[str],
+    new_since: Optional[str],
+    output_n: Optional[str],
+    output_x: Optional[str],
 ) -> None:
-    """Fetch, display, and optionally export subdomains with optional filters."""
     if filter_plugin:
         rows = await storage.get_by_plugin(domain, filter_plugin)
         _info(f"Target : [bold white]{domain}[/bold white]  Plugin : [bold white]{filter_plugin}[/bold white]")
@@ -434,26 +391,20 @@ async def _db_query(
 
     subdomains = [row.subdomain for row in rows]
 
-    # -oN: plain newline-separated file
     if output_n:
         _write_output(subdomains, output_n, separator="\n")
 
-    # -oX '<sep>:<file>'
     if output_x:
         sep, file = _parse_ox(output_x)
         _write_output(subdomains, file, separator=sep)
 
 
 async def _db_raw_query(
-    storage:  StorageManager,
-    query:    str,
+    storage: StorageManager,
+    query: str,
     output_n: Optional[str],
     output_x: Optional[str],
 ) -> None:
-    """
-    Execute a raw SELECT query and display + optionally export results.
-    Only SELECT statements are permitted.
-    """
     q = query.strip()
     if not q.upper().startswith("SELECT"):
         _error("Only SELECT queries are allowed with -C.")
@@ -469,7 +420,6 @@ async def _db_raw_query(
 
     _render_raw_rows(rows)
 
-    # Extract first column values for -oN / -oX output
     first_col = list(rows[0].keys())[0]
     values = [str(row[first_col]) for row in rows if row.get(first_col) is not None]
 
@@ -481,39 +431,17 @@ async def _db_raw_query(
         _write_output(values, file, separator=sep)
 
 
-# ──────────────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────────────
-
 def _parse_ox(value: str) -> tuple[str, str]:
-    """
-    Parse -oX argument in format '<separator>:<filepath>'.
-
-    The separator is everything before the LAST colon,
-    the filepath is everything after it.
-
-    Examples:
-        ' :out.txt'    → (' ', 'out.txt')
-        ';:out.txt'    → (';', 'out.txt')
-        '\\n:out.txt'  → ('\\n', 'out.txt')
-        ',,:subs.txt'  → (',,', 'subs.txt')
-
-    Raises typer.Exit(1) if format is invalid.
-    """
     idx = value.rfind(":")
     if idx == -1 or idx == len(value) - 1:
         _error(
             "-oX format is '<separator>:<file>'  e.g.  ';:out.txt'  or  ' :out.txt'\n"
             "  The separator comes before the last colon, the file path after it."
         )
-    sep  = value[:idx]
+    sep = value[:idx]
     file = value[idx + 1:]
     return sep, file
 
-
-# ──────────────────────────────────────────────────────────────────
-# Entry
-# ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     app()

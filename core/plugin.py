@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import logging
 
+
 class Plugin(ABC):
     def __init__(self, config: dict):
         self.config = config
@@ -12,8 +13,6 @@ class Plugin(ABC):
     @property
     def logger(self) -> logging.Logger:
         return logging.getLogger(self.__class__.__name__)
-
-    
 
     def is_configured(self) -> bool:
         return all(
