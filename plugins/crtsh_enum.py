@@ -14,7 +14,7 @@ class CrtshPlugin(Plugin):
                         for entry in entries:
                             subdomains.append(entry["common_name"])
                     else:
-                        self.logger.warning(f"Getting diffirent status code, {resp.status}")
+                        self.logger.warning(f"Getting different status code, {resp.status}")
 
         except (KeyError, aiohttp.ClientError, aiohttp.ClientTimeout) as e:
             self.logger.error(f"Error: {e}")
