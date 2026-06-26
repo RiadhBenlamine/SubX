@@ -90,13 +90,21 @@ def _render_db_summary(summaries: list[dict]) -> None:
 def _render_db_rows(rows: list, domain: str) -> None:
     table = _make_table(
         ("SUBDOMAIN",  {"style": "white",     "no_wrap": True}),
+        ("ALIVE",      {"style": "white",     "justify": "center"}),
         ("SOURCE",     {"style": "dim cyan",  "justify": "center"}),
         ("FIRST SEEN", {"style": "dim white", "justify": "right", "no_wrap": True}),
         ("LAST SEEN",  {"style": "dim white", "justify": "right", "no_wrap": True}),
     )
     for row in rows:
+        if row.alive is True:
+            alive_str = "[bold green]✔[/bold green]"
+        elif row.alive is False:
+            alive_str = "[bold red]✘[/bold red]"
+        else:
+            alive_str = "[dim]?[/dim]"
         table.add_row(
             row.subdomain,
+            alive_str,
             row.source_plugin,
             row.first_seen.strftime("%Y-%m-%d %H:%M"),
             row.last_seen.strftime("%Y-%m-%d %H:%M"),
