@@ -1,11 +1,9 @@
 import aiohttp
 import asyncio
-import logging
 from core.plugin import Plugin
 
-logger = logging.getLogger(__name__)
-
 MAX_RATE_LIMIT_RETRIES = 3
+_TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 
 class VirustotalPlugin(Plugin):
@@ -21,7 +19,7 @@ class VirustotalPlugin(Plugin):
         headers = {"X-Apikey": self.config["VIRUSTOTAL_API"]}
 
         try:
-            async with aiohttp.ClientSession(headers=headers) as session:
+            async with aiohttp.ClientSession(headers=headers, timeout=_TIMEOUT) as session:
                 while url:
                     rate_limit_retries = 0
 
@@ -30,8 +28,8 @@ class VirustotalPlugin(Plugin):
                             async with session.get(url) as response:
 
                                 if response.status == 403:
-                                    logger.warning(
-                                        "[VT] Quota exhausted (HTTP 403), skipping. "
+                                    self.logger.warning(
+                                        "Quota exhausted (HTTP 403), skipping. "
                                         "Returning %d subdomains collected so far.",
                                         len(subdomains),
                                     )
@@ -40,8 +38,8 @@ class VirustotalPlugin(Plugin):
                                 if response.status == 429:
                                     rate_limit_retries += 1
                                     if rate_limit_retries > MAX_RATE_LIMIT_RETRIES:
-                                        logger.warning(
-                                            "[VT] Rate limited %d times, giving up. "
+                                        self.logger.warning(
+                                            "Rate limited %d times, giving up. "
                                             "Returning %d subdomains collected so far.",
                                             rate_limit_retries,
                                             len(subdomains),
@@ -50,7 +48,7 @@ class VirustotalPlugin(Plugin):
 
                                     retry_after = int(response.headers.get("Retry-After",
                                                       response.headers.get("X-RateLimit-Reset", 60)))
-                                    logger.warning("[VT] Rate limited, sleeping %ds (attempt %d/%d)",
+                                    self.logger.warning("Rate limited, sleeping %ds (attempt %d/%d)",
                                                    retry_after, rate_limit_retries, MAX_RATE_LIMIT_RETRIES)
                                     await asyncio.sleep(retry_after)
                                     continue
@@ -60,17 +58,17 @@ class VirustotalPlugin(Plugin):
 
                                 batch = [item["id"] for item in data.get("data", [])]
                                 subdomains.extend(batch)
-                                logger.info("[VT] Fetched %d subdomains so far...", len(subdomains))
+                                self.logger.info("Fetched %d subdomains so far...", len(subdomains))
 
                                 url = data.get("links", {}).get("next")
                                 break  # break inner retry loop, continue outer pagination loop
 
                         except aiohttp.ClientResponseError as e:
-                            logger.error("[VT] HTTP error %d: %s — skipping.", e.status, e.message)
+                            self.logger.error("HTTP error %d: %s — skipping.", e.status, e.message)
                             return subdomains
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.error("[VT] Connection error, skipping: %s", e)
+            self.logger.error("Connection error, skipping: %s", e)
 
-        logger.info("[VT] Total subdomains found: %d", len(subdomains))
+        self.logger.info("Total subdomains found: %d", len(subdomains))
         return subdomains

@@ -1,26 +1,37 @@
-import asyncio
-import logging
 import aiohttp
+
 from core.plugin import Plugin
 
-logger = logging.getLogger(__name__)
+_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
 
 class HackerTargetPlugin(Plugin):
-    api = "https://api.hackertarget.com/hostsearch/?q="
-
+    """Enumerates subdomains via HackerTarget host search API (no auth)."""
 
     async def run(self, domain: str) -> list[str]:
+        url = f"https://api.hackertarget.com/hostsearch/?q={domain}"
+        subdomains = []
+
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f'{self.api}{domain}') as response:
-                    if response.status == 200:
-                        data = await response.text()
-                        if data == "API count exceeded - Increase Quota with Membership":
-                            logger.warning(" API count exceeded")
-                        subdomains = [line.split(',')[0] for line in data.splitlines()]
+            async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+                        return []
+                    data = await resp.text()
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.error("[HackerTarget] Connection error, skipping: %s", e)
+            if "API count exceeded" in data:
+                self.logger.warning("API quota exceeded for '%s'.", domain)
+                return []
 
-        logger.info("[VT] Total subdomains found: %d", len(subdomains))
+            subdomains = [
+                line.split(",")[0]
+                for line in data.splitlines()
+                if line.strip()
+            ]
+        except (aiohttp.ClientError, TimeoutError) as e:
+            self.logger.error("Request failed for '%s': %s", domain, e)
+            return []
+
+        self.logger.info("Found %d subdomains for '%s'.", len(subdomains), domain)
         return subdomains

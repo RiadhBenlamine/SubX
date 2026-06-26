@@ -1,33 +1,32 @@
 import aiohttp
-import logging
+
 from core.plugin import Plugin
 
-log = logging.getLogger(__name__)
+_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
 
 class BevigilPlugin(Plugin):
+    """Enumerates subdomains via BeVigil OSINT API."""
 
     @property
     def required_keys(self) -> list[str]:
         return ["BEVIGIL_API"]
 
     async def run(self, domain: str) -> list[str]:
-        api_url = f"http://osint.bevigil.com/api/{domain}/subdomains/"
-        headers = {
-            "X-Access-Token": self.config["BEVIGIL_API"],
-        }
-
-        subdomains = []
+        url = f"http://osint.bevigil.com/api/{domain}/subdomains/"
+        headers = {"X-Access-Token": self.config["BEVIGIL_API"]}
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, headers=headers) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        subdomains = data.get("subdomains", [])
-                    else:
-                        log.error(f"[BevigilPlugin] HTTP error: {resp.status}")
+            async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status != 200:
+                        self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+                        return []
+                    data = await resp.json()
+        except (aiohttp.ClientError, TimeoutError) as e:
+            self.logger.error("Request failed for '%s': %s", domain, e)
+            return []
 
-        except aiohttp.ClientError as e:
-            log.error(f"[BevigilPlugin] Request error: {e}")
-
+        subdomains = data.get("subdomains", [])
+        self.logger.info("Found %d subdomains for '%s'.", len(subdomains), domain)
         return subdomains

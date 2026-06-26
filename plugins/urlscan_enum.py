@@ -1,12 +1,10 @@
 import aiohttp
 import asyncio
-import logging
 from core.plugin import Plugin
-
-logger = logging.getLogger(__name__)
 
 MAX_RATE_LIMIT_RETRIES = 3
 MAX_PAGES = 50
+_TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 
 class UrlscanPlugin(Plugin):
@@ -31,7 +29,7 @@ class UrlscanPlugin(Plugin):
         }
 
         try:
-            async with aiohttp.ClientSession(headers=headers) as session:
+            async with aiohttp.ClientSession(headers=headers, timeout=_TIMEOUT) as session:
                 page = 1
                 while url and page <= MAX_PAGES:
                     rate_limit_retries = 0
@@ -40,8 +38,8 @@ class UrlscanPlugin(Plugin):
                         try:
                             async with session.get(url, params=params) as response:
                                 if response.status in (401, 403):
-                                    logger.warning(
-                                        "[Urlscan] Unauthorized/Quota exhausted (HTTP %d). "
+                                    self.logger.warning(
+                                        "Unauthorized/Quota exhausted (HTTP %d). "
                                         "Returning %d subdomains collected so far.",
                                         response.status,
                                         len(subdomains),
@@ -51,8 +49,8 @@ class UrlscanPlugin(Plugin):
                                 if response.status == 429:
                                     rate_limit_retries += 1
                                     if rate_limit_retries > MAX_RATE_LIMIT_RETRIES:
-                                        logger.warning(
-                                            "[Urlscan] Rate limited %d times, giving up. "
+                                        self.logger.warning(
+                                            "Rate limited %d times, giving up. "
                                             "Returning %d subdomains collected so far.",
                                             rate_limit_retries,
                                             len(subdomains),
@@ -60,8 +58,8 @@ class UrlscanPlugin(Plugin):
                                         return list(subdomains)
 
                                     retry_after = int(response.headers.get("Retry-After", 60))
-                                    logger.warning(
-                                        "[Urlscan] Rate limited, sleeping %ds (attempt %d/%d)",
+                                    self.logger.warning(
+                                        "Rate limited, sleeping %ds (attempt %d/%d)",
                                         retry_after,
                                         rate_limit_retries,
                                         MAX_RATE_LIMIT_RETRIES,
@@ -88,8 +86,8 @@ class UrlscanPlugin(Plugin):
                                     if task_dom := task_data.get("domain"):
                                         subdomains.add(task_dom.strip().lower())
 
-                                logger.info(
-                                    "[Urlscan] Page %d: Fetched %d subdomains so far...",
+                                self.logger.info(
+                                    "Page %d: Fetched %d subdomains so far...",
                                     page,
                                     len(subdomains),
                                 )
@@ -108,15 +106,15 @@ class UrlscanPlugin(Plugin):
                                 break
 
                         except aiohttp.ClientResponseError as e:
-                            logger.error(
-                                "[Urlscan] HTTP error %d: %s — skipping.",
+                            self.logger.error(
+                                "HTTP error %d: %s — skipping.",
                                 e.status,
                                 e.message,
                             )
                             return list(subdomains)
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.error("[Urlscan] Connection error, skipping: %s", e)
+            self.logger.error("Connection error, skipping: %s", e)
 
-        logger.info("[Urlscan] Total subdomains found: %d", len(subdomains))
+        self.logger.info("Total subdomains found: %d", len(subdomains))
         return list(subdomains)

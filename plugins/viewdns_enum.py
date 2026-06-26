@@ -1,11 +1,10 @@
-from core.plugin import Plugin
-import logging
 import aiohttp
-
-logger = logging.getLogger(__name__)
+from core.plugin import Plugin
 
 
 class ViewDnsPlugin(Plugin):
+
+    @property
     def required_keys(self) -> list[str]:
         return ["VIEWDNS_API"]
 
@@ -29,7 +28,7 @@ class ViewDnsPlugin(Plugin):
                         subdomains.extend(self._extract(data))
 
         except aiohttp.ClientError as e:
-            logger.error("[ViewDnsPlugin] Request error: %s", e)
+            self.logger.error("Request error: %s", e)
 
         return subdomains
 
@@ -54,14 +53,13 @@ class ViewDnsPlugin(Plugin):
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status == 200:
                     return await resp.json()
-                logger.error("[ViewDnsPlugin] HTTP %d on page %d", resp.status, page)
+                self.logger.error("HTTP %d on page %d", resp.status, page)
                 return None
         except aiohttp.ClientError as e:
-            logger.error("[ViewDnsPlugin] Failed to fetch page %d: %s", page, e)
+            self.logger.error("Failed to fetch page %d: %s", page, e)
             return None
 
-    @staticmethod
-    def _extract(json_data: dict) -> list[str]:
+    def _extract(self, json_data: dict) -> list[str]:
         """Pull subdomain names out of a response dict."""
         try:
             return [
@@ -70,7 +68,7 @@ class ViewDnsPlugin(Plugin):
                 if s.get("name")
             ]
         except (KeyError, TypeError):
-            logger.warning("[ViewDnsPlugin] Unexpected response structure.")
+            self.logger.warning("Unexpected response structure.")
             return []
 
     @staticmethod

@@ -1,23 +1,32 @@
 import json
-import logging
-from core.plugin import Plugin
+
 import aiohttp
 
-logger = logging.getLogger(__name__)
+from core.plugin import Plugin
+
+_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
 
 class AnubisDbPlugin(Plugin):
-    api_url = 'https://anubisdb.com/anubis/subdomains/'
+    """Enumerates subdomains via AnubisDB (no auth)."""
 
     async def run(self, domain: str) -> list[str]:
+        url = f"https://anubisdb.com/anubis/subdomains/{domain}"
+
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(self.api_url + domain) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                    else:
-                        logger.error(f"[AnubisDB] Error: Different status code {resp.status}")
-        except (aiohttp.ClientError, json.decoder.JSONDecodeError) as e :
-            print(e)
-            logger.error(f"[AnubisDB] Error: {e}")
+            async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+                        return []
+                    data = await resp.json()
+        except (aiohttp.ClientError, json.JSONDecodeError, TimeoutError) as e:
+            self.logger.error("Request failed for '%s': %s", domain, e)
             return []
+
+        if not isinstance(data, list):
+            self.logger.warning("Unexpected response type for '%s': %s", domain, type(data).__name__)
+            return []
+
+        self.logger.info("Found %d subdomains for '%s'.", len(data), domain)
         return data
