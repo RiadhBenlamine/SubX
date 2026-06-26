@@ -293,6 +293,44 @@ def db(
     asyncio.run(_db(domain, filter_plugin, new_since, delete, output_n, output_x, raw_query))
 
 
+@app.command("dev-migrate", context_settings=HELP_NAMES)
+def db_migrate(
+    no_backup: bool = typer.Option(False, "--no-backup", help="Skip creating a backup before migrating."),
+) -> None:
+    """
+    [bold cyan]Safely migrate the database schema[/bold cyan] to match the current models.
+
+
+    Adds any new columns that exist in the code but are missing from the DB.
+    A timestamped backup of the database file is created before any changes.
+
+    Examples:
+      subx dev-migrate                 # migrate with backup
+      subx dev-migrate --no-backup     # migrate without backup
+    """
+    asyncio.run(_db_migrate(backup=not no_backup))
+
+
+async def _db_migrate(backup: bool) -> None:
+    _banner()
+    storage = StorageManager()
+    try:
+        added = await storage.migrate(backup=backup)
+    except Exception as e:
+        _error(f"Migration failed: {e}")
+    finally:
+        await storage.close()
+
+    if added:
+        _success(f"Migration complete — added [bold white]{len(added)}[/bold white] column(s):")
+        for col in added:
+            console.print(f"  [dim]•[/dim]  [bold white]{col}[/bold white]")
+    else:
+        _info("Database schema is already up to date. No changes needed.")
+
+    console.print()
+
+
 async def _db(
     domain: Optional[str],
     filter_plugin: Optional[str],

@@ -1,9 +1,10 @@
 import asyncio
 import logging
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import delete, func, text, update
+from sqlalchemy import delete, func, inspect, text, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -42,6 +43,59 @@ class StorageManager:
 
     async def close(self) -> None:
         await self.engine.dispose()
+
+    async def migrate(self, backup: bool = True) -> list[str]:
+        """Compare the model schema against the live DB and add missing columns.
+
+        Only additive changes (new nullable columns) are applied — nothing is
+        dropped or altered, so this is always safe to run.
+
+        Returns a list of column names that were added.
+        """
+        db_path = self._resolve_db_path()
+        if db_path and backup and db_path.exists():
+            backup_path = db_path.with_suffix(
+                f".backup-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.db"
+            )
+            shutil.copy2(db_path, backup_path)
+            logger.info("Backup created: %s", backup_path)
+
+        added: list[str] = []
+
+        async with self.engine.connect() as conn:
+            existing_cols: set[str] = await conn.run_sync(
+                lambda sync_conn: {
+                    col["name"]
+                    for col in inspect(sync_conn).get_columns("subdomain")
+                }
+            )
+
+            model_table = SQLModel.metadata.tables["subdomain"]
+
+            for col in model_table.columns:
+                if col.name in existing_cols:
+                    continue
+
+                col_type = col.type.compile(dialect=self.engine.dialect)
+                stmt = f'ALTER TABLE subdomain ADD COLUMN "{col.name}" {col_type}'
+                await conn.execute(text(stmt))
+                added.append(col.name)
+                logger.info("Added column: %s (%s)", col.name, col_type)
+
+            await conn.commit()
+
+        return added
+
+    def _resolve_db_path(self) -> Path | None:
+        """Extract the filesystem path from the database URL (SQLite only)."""
+        url_str = str(self.engine.url)
+        # sqlite+aiosqlite:///subx.db  →  subx.db
+        # sqlite+aiosqlite:////abs/path/to/subx.db  →  /abs/path/to/subx.db
+        for prefix in ("sqlite+aiosqlite:///", "sqlite:///"):
+            if url_str.startswith(prefix):
+                raw = url_str[len(prefix):]
+                return Path(raw) if raw else None
+        return None
 
     async def save(self, result: ProcessedResult, target: str) -> int:
         self._ensure_initialized()
