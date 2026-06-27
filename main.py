@@ -11,12 +11,14 @@ from rich.table import Table
 from rich.text import Text
 
 from core.config_manager import ConfigManager
-from core.httpx import Httpx
+from tools.httpx import HttpxTool
 from core.logger import setup_logger
 from core.models import ProcessedResult
 from core.plugin_manager import PluginManager
 from core.processor import Processor
 from core.storage_manager import StorageManager
+from core.tool import ToolExecutionError, ToolNotFoundError, ToolTimeoutError
+from core.tool_manager import ToolManager
 
 HELP_NAMES = {"help_option_names": ["-h", "--help"]}
 
@@ -188,7 +190,7 @@ def _render_enum_results(
         ))
 
 
-def _render_probe_summary(rows: list, domain: str) -> None:
+def _render_http_probe_summary(rows: list, domain: str) -> None:
     alive = [r for r in rows if r.alive is True]
     dead = [r for r in rows if r.alive is False]
     unchecked = [r for r in rows if r.alive is None]
@@ -328,8 +330,8 @@ async def _run_domain(
     return processed
 
 
-@app.command("probe", context_settings=HELP_NAMES)
-def probe(
+@app.command("http-probe", context_settings=HELP_NAMES)
+def http_probe(
     domain: str            = typer.Option(..., "-d", "--domain", help="Target domain to probe stored subdomains for."),
     output_n: Optional[str] = typer.Option(None, "-oN", help="Save alive subdomains to file (one per line)."),
     output_x: Optional[str] = typer.Option(None, "-oX", help="Save alive subdomains to file with custom separator. Use -oX '<sep>:<file>'."),
@@ -343,31 +345,41 @@ def probe(
 
     \b
     Examples:
-      subx probe -d telekom.de                       # probe and show results
-      subx probe -d telekom.de -oN alive.txt          # also save alive hosts
-      subx probe -d telekom.de -oX ';:alive.txt'      # custom separator
+      subx http-probe -d telekom.de                       # probe and show results
+      subx http-probe -d telekom.de -oN alive.txt          # also save alive hosts
+      subx http-probe -d telekom.de -oX ';:alive.txt'      # custom separator
     """
-    asyncio.run(_probe(domain, output_n, output_x))
+    asyncio.run(_http_probe(domain, output_n, output_x))
 
 
-async def _probe(domain: str, output_n: Optional[str], output_x: Optional[str]) -> None:
+async def _http_probe(domain: str, output_n: Optional[str], output_x: Optional[str]) -> None:
     _banner()
     setup_logger()
 
     _info(f"Target : [bold white]{domain}[/bold white]")
     console.print()
 
-    httpx_runner = Httpx(domain)
+    tool_manager = ToolManager()
 
-    with console.status(f"[cyan]Probing {domain}...[/cyan]", spinner="dots"):
-        raw_results = await httpx_runner.run_httpx()
+    try:
+        with console.status(f"[cyan]Probing {domain}...[/cyan]", spinner="dots"):
+            results = await tool_manager.run_tool(HttpxTool(), domain)
+    except ToolNotFoundError:
+        _error("httpx binary not found. Install it (go install / apt) or check your bin/ path.")
+        return
+    except ToolTimeoutError:
+        _error(f"httpx timed out while probing {domain}. Try again or raise the timeout.")
+        return
+    except ToolExecutionError as e:
+        _error(f"httpx failed: {e}")
+        return
 
-    if not raw_results:
+    if not results:
         console.print(f"[dim]  No subdomains stored for[/dim] [bold white]{domain}[/bold white] [dim]— run `subx enum` first.[/dim]\n")
         return
 
-    # httpx_runner closed its own StorageManager at the end of run_httpx(),
-    # so open a fresh one to read back the now-updated rows.
+    # ToolManager already persisted the normalized results, so open a
+    # fresh storage handle to read back the now-updated rows.
     storage = StorageManager()
     await storage.init()
     try:
@@ -376,7 +388,7 @@ async def _probe(domain: str, output_n: Optional[str], output_x: Optional[str]) 
         await storage.close()
 
     console.print()
-    _render_probe_summary(rows, domain)
+    _render_http_probe_summary(rows, domain)
 
     if output_n or output_x:
         alive_subs = [row.subdomain for row in rows if row.alive is True]
@@ -408,7 +420,7 @@ def db(
     Examples:
       subx db                                          # summary of all targets
       subx db -d telekom.de                            # list all subdomains
-      subx db -d telekom.de --web                      # show alive/status/title (needs `subx probe` run first)
+      subx db -d telekom.de --web                      # show alive/status/title (needs `subx http-probe` run first)
       subx db -d telekom.de -oN subs.txt               # save one per line
       subx db -d telekom.de -oX ';:subs.txt'           # save semicolon-separated
       subx db -d telekom.de -oX ' :subs.txt'           # save space-separated

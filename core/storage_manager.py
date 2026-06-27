@@ -86,6 +86,70 @@ class StorageManager:
                         updated += result.rowcount
         return updated
 
+    async def update_results(
+        self, target: str, results: list[dict]
+    ) -> int:
+        """Persist any tool's normalized output onto existing Subdomain rows.
+
+        Generic counterpart to update_httpx_results: instead of a hardcoded
+        column allowlist, this writes whatever keys in each dict match a
+        real, writable column on the Subdomain model. That means naabu,
+        nuclei, or any future Tool can add their own columns and this method
+        handles them with zero changes — it just needs the column to exist
+        on the model (add it via a migration, then it's writable here).
+
+        Identity/audit columns (id, target, subdomain, first_seen, last_seen)
+        and source_plugin (owned by the original discovery, not by liveness/
+        port/vuln probes) are never written from a tool's result dict, even
+        if a key with that name is present — last_seen is always bumped to
+        "now" instead.
+
+        :param target: the scope these results belong to
+        :param results: list of dicts, each with at least "subdomain" plus
+            any other fields matching writable Subdomain columns
+        :return: number of rows updated
+        """
+        self._ensure_initialized()
+        if not results:
+            return 0
+
+        protected = {
+            "id", "target", "subdomain", "source_plugin",
+            "first_seen", "last_seen",
+        }
+        writable_columns = {
+            col.name for col in Subdomain.__table__.columns
+        } - protected
+
+        updated = 0
+        chunk_size = 450
+        now = datetime.now(tz=timezone.utc)
+
+        async with self._session() as session:
+            async with session.begin():
+                for i in range(0, len(results), chunk_size):
+                    batch = results[i : i + chunk_size]
+                    for row in batch:
+                        sub = row.get("subdomain")
+                        if not sub:
+                            continue
+                        values = {
+                            k: v for k, v in row.items() if k in writable_columns
+                        }
+                        if not values:
+                            continue
+                        values["last_seen"] = now
+                        result = await session.execute(
+                            update(Subdomain)
+                            .where(
+                                Subdomain.target == target,
+                                Subdomain.subdomain == sub,
+                            )
+                            .values(**values)
+                        )
+                        updated += result.rowcount
+        return updated
+
     async def migrate(self, backup: bool = True) -> list[str]:
         """Compare the model schema against the live DB and add missing columns.
 

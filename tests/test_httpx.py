@@ -1,6 +1,6 @@
 # probe_test.py
 import asyncio
-from core.httpx import (Httpx)
+from tools.httpx import (Httpx)
 
 async def main():
     prober = Httpx("hackerone.com")
