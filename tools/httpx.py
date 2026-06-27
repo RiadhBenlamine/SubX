@@ -13,9 +13,22 @@ class HttpxTool(Tool):
 
     TOOL_NAME = "httpx"
 
-    async def run(self, targets: list[str], timeout: int = 120) -> list[dict]:
+    # httpx defaults to 50 concurrent workers and ~10s per request before
+    # giving up on a single host. Budget generously per host so large lists
+    # (thousands of subdomains) don't get cut off mid-run, while small lists
+    # still get a reasonable floor rather than an unnecessarily long wait.
+    MIN_TIMEOUT = 120
+    PER_HOST_SECONDS = 0.3  # ~3000 hosts -> +900s on top of the floor
+
+    def _scaled_timeout(self, target_count: int) -> int:
+        return max(self.MIN_TIMEOUT, int(target_count * self.PER_HOST_SECONDS))
+
+    async def run(self, targets: list[str], timeout: int | None = None) -> list[dict]:
         if not targets:
             return []
+
+        if timeout is None:
+            timeout = self._scaled_timeout(len(targets))
 
         input_data = "\n".join(targets) + "\n"
 
