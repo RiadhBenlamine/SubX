@@ -6,7 +6,8 @@ from pathlib import Path
 
 from sqlalchemy import delete, func, inspect, text, update
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import (AsyncEngine, AsyncSession,
+                                    create_async_engine)
 from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, select
 

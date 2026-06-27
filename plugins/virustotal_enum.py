@@ -1,5 +1,7 @@
-import aiohttp
 import asyncio
+
+import aiohttp
+
 from core.plugin import Plugin
 
 MAX_RATE_LIMIT_RETRIES = 3

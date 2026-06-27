@@ -10,7 +10,6 @@ class HackerTargetPlugin(Plugin):
 
     async def run(self, domain: str) -> list[str]:
         url = f"https://api.hackertarget.com/hostsearch/?q={domain}"
-        subdomains = []
 
         try:
             async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:

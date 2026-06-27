@@ -1,7 +1,8 @@
 import json
 
 from core.logger import logger
-from core.tool import Tool, ToolExecutionError, ToolNotFoundError, ToolTimeoutError
+from core.tool import (Tool, ToolExecutionError, ToolNotFoundError,
+                       ToolTimeoutError)
 
 
 class HttpxTool(Tool):
@@ -34,7 +35,7 @@ class HttpxTool(Tool):
 
         try:
             stdout, stderr = await self._execute(
-                ["-silent", "-json", "-t 50"],
+                ["-silent", "-json"],
                 input_data=input_data,
                 timeout=timeout,
             )

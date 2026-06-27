@@ -1,5 +1,7 @@
 import asyncio
+
 from plugins.crtsh_enum import CrtshPlugin
+
 
 async def main():
     plugin = CrtshPlugin({})

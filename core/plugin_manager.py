@@ -4,8 +4,8 @@ import inspect
 import logging
 import pathlib
 
-from core.plugin import Plugin
 from core.models import PluginResult
+from core.plugin import Plugin
 
 logger = logging.getLogger("PluginManager")
 

@@ -1,6 +1,8 @@
 
 import asyncio
+
 from plugins.bgp_enum import BgpPlugin
+
 
 async def main():
     plugin = BgpPlugin({})

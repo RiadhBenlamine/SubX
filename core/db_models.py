@@ -1,5 +1,6 @@
-from sqlmodel import SQLModel, Field, ForeignKey
 from datetime import datetime, timezone
+
+from sqlmodel import Field, SQLModel
 
 
 def _utc_now() -> datetime:

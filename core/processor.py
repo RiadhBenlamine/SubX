@@ -1,4 +1,5 @@
 import logging
+
 from core.models import PluginResult, ProcessedResult
 
 logger = logging.getLogger(__name__)

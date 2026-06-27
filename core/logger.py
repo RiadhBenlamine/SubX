@@ -1,5 +1,6 @@
 import logging
 
+
 def setup_logger(level: int = logging.ERROR) -> None:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(

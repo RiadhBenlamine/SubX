@@ -11,7 +11,6 @@ from rich.table import Table
 from rich.text import Text
 
 from core.config_manager import ConfigManager
-from tools.httpx import HttpxTool
 from core.logger import setup_logger
 from core.models import ProcessedResult
 from core.plugin_manager import PluginManager
@@ -19,6 +18,7 @@ from core.processor import Processor
 from core.storage_manager import StorageManager
 from core.tool import ToolExecutionError, ToolNotFoundError, ToolTimeoutError
 from core.tool_manager import ToolManager
+from tools.httpx import HttpxTool
 
 HELP_NAMES = {"help_option_names": ["-h", "--help"]}
 

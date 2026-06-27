@@ -1,6 +1,8 @@
 import asyncio
+
 from shodan import Shodan
 from shodan.exception import APIError as ShodanAPIError
+
 from core.plugin import Plugin
 
 
