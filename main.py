@@ -11,6 +11,7 @@ from rich.table import Table
 from rich.text import Text
 
 from core.config_manager import ConfigManager
+from core.httpx import Httpx
 from core.logger import setup_logger
 from core.models import ProcessedResult
 from core.plugin_manager import PluginManager
@@ -90,10 +91,26 @@ def _render_db_summary(summaries: list[dict]) -> None:
 def _render_db_rows(rows: list, domain: str) -> None:
     table = _make_table(
         ("SUBDOMAIN",  {"style": "white",     "no_wrap": True}),
-        ("ALIVE",      {"style": "white",     "justify": "center"}),
         ("SOURCE",     {"style": "dim cyan",  "justify": "center"}),
         ("FIRST SEEN", {"style": "dim white", "justify": "right", "no_wrap": True}),
         ("LAST SEEN",  {"style": "dim white", "justify": "right", "no_wrap": True}),
+    )
+    for row in rows:
+        table.add_row(
+            row.subdomain,
+            row.source_plugin,
+            row.first_seen.strftime("%Y-%m-%d %H:%M"),
+            row.last_seen.strftime("%Y-%m-%d %H:%M"),
+        )
+    console.print(table)
+
+
+def _render_db_rows_web(rows: list, domain: str) -> None:
+    table = _make_table(
+        ("SUBDOMAIN", {"style": "white"}),
+        ("ALIVE",     {"style": "white",     "justify": "center"}),
+        ("STATUS",    {"style": "green",     "justify": "right"}),
+        ("TITLE",     {"style": "dim white", "no_wrap": True, "overflow": "ellipsis"}),
     )
     for row in rows:
         if row.alive is True:
@@ -102,15 +119,15 @@ def _render_db_rows(rows: list, domain: str) -> None:
             alive_str = "[bold red]✘[/bold red]"
         else:
             alive_str = "[dim]?[/dim]"
+        status_str = str(row.status_code) if row.status_code is not None else "—"
+        title_str = row.title if row.title else "—"
         table.add_row(
             row.subdomain,
             alive_str,
-            row.source_plugin,
-            row.first_seen.strftime("%Y-%m-%d %H:%M"),
-            row.last_seen.strftime("%Y-%m-%d %H:%M"),
+            status_str,
+            title_str,
         )
     console.print(table)
-    console.print(f"\n[dim]  {len(rows)} result(s) for {domain}[/dim]\n")
 
 
 def _render_raw_rows(rows: list[dict]) -> None:
@@ -169,6 +186,44 @@ def _render_enum_results(
             title=f"[bold cyan]Summary — {target}[/bold cyan]",
             border_style="cyan",
         ))
+
+
+def _render_probe_summary(rows: list, domain: str) -> None:
+    alive = [r for r in rows if r.alive is True]
+    dead = [r for r in rows if r.alive is False]
+    unchecked = [r for r in rows if r.alive is None]
+
+    table = _make_table(
+        ("SUBDOMAIN",    {"style": "white",    "no_wrap": True}),
+        ("ALIVE",        {"style": "white",    "justify": "center"}),
+        ("STATUS",       {"style": "green",    "justify": "right"}),
+        ("TITLE",        {"style": "dim white", "overflow": "fold"}),
+    )
+    for row in alive:
+        table.add_row(
+            row.subdomain,
+            "[bold green]✔[/bold green]",
+            str(row.status_code) if row.status_code is not None else "—",
+            row.title or "—",
+        )
+    console.print(table)
+    console.print()
+
+    summary = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+    summary.add_column(style="dim white")
+    summary.add_column(style="bold white")
+    summary.add_row("Alive", f"[bold green]{len(alive)}[/bold green]")
+    summary.add_row("Dead", f"[bold red]{len(dead)}[/bold red]")
+    if unchecked:
+        summary.add_row("Unchecked", f"[dim]{len(unchecked)}[/dim]")
+    summary.add_row("──────────────────", "──────")
+    summary.add_row("Total", str(len(rows)))
+
+    console.print(Panel(
+        summary,
+        title=f"[bold cyan]Probe Summary — {domain}[/bold cyan]",
+        border_style="cyan",
+    ))
 
 
 def _write_output(values: list[str], output: str, separator: str = "\n") -> None:
@@ -273,9 +328,72 @@ async def _run_domain(
     return processed
 
 
+@app.command("probe", context_settings=HELP_NAMES)
+def probe(
+    domain: str            = typer.Option(..., "-d", "--domain", help="Target domain to probe stored subdomains for."),
+    output_n: Optional[str] = typer.Option(None, "-oN", help="Save alive subdomains to file (one per line)."),
+    output_x: Optional[str] = typer.Option(None, "-oX", help="Save alive subdomains to file with custom separator. Use -oX '<sep>:<file>'."),
+) -> None:
+    """\
+    [bold cyan]Probe stored subdomains[/bold cyan] for liveness using httpx.
+
+    Reads every subdomain already stored for the target domain, runs them
+    through httpx, and persists alive/dead status, HTTP status code, and
+    page title back into the database.
+
+    \b
+    Examples:
+      subx probe -d telekom.de                       # probe and show results
+      subx probe -d telekom.de -oN alive.txt          # also save alive hosts
+      subx probe -d telekom.de -oX ';:alive.txt'      # custom separator
+    """
+    asyncio.run(_probe(domain, output_n, output_x))
+
+
+async def _probe(domain: str, output_n: Optional[str], output_x: Optional[str]) -> None:
+    _banner()
+    setup_logger()
+
+    _info(f"Target : [bold white]{domain}[/bold white]")
+    console.print()
+
+    httpx_runner = Httpx(domain)
+
+    with console.status(f"[cyan]Probing {domain}...[/cyan]", spinner="dots"):
+        raw_results = await httpx_runner.run_httpx()
+
+    if not raw_results:
+        console.print(f"[dim]  No subdomains stored for[/dim] [bold white]{domain}[/bold white] [dim]— run `subx enum` first.[/dim]\n")
+        return
+
+    # httpx_runner closed its own StorageManager at the end of run_httpx(),
+    # so open a fresh one to read back the now-updated rows.
+    storage = StorageManager()
+    await storage.init()
+    try:
+        rows = await storage.get_all(domain)
+    finally:
+        await storage.close()
+
+    console.print()
+    _render_probe_summary(rows, domain)
+
+    if output_n or output_x:
+        alive_subs = [row.subdomain for row in rows if row.alive is True]
+        if not alive_subs:
+            _warn("No alive subdomains to write.")
+        else:
+            if output_n:
+                _write_output(alive_subs, output_n, separator="\n")
+            if output_x:
+                sep, file = _parse_ox(output_x)
+                _write_output(alive_subs, file, separator=sep)
+
+
 @app.command("db", context_settings=HELP_NAMES)
 def db(
     domain:        Optional[str] = typer.Option(None,  "-d", "--domain",       help="Target domain. Omit to list all tracked domains."),
+    web:           bool          = typer.Option(False, "--web",                help="Show ALIVE, HTTP STATUS, and TITLE columns instead of source/timestamps."),
     filter_plugin: Optional[str] = typer.Option(None,  "--filter-plugin",       help="Filter results by plugin name."),
     new_since:     Optional[str] = typer.Option(None,  "--new-since",           help="Show subdomains first seen after YYYY-MM-DD."),
     delete:        bool          = typer.Option(False, "--delete",               help="Delete all records for the target domain."),
@@ -290,6 +408,7 @@ def db(
     Examples:
       subx db                                          # summary of all targets
       subx db -d telekom.de                            # list all subdomains
+      subx db -d telekom.de --web                      # show alive/status/title (needs `subx probe` run first)
       subx db -d telekom.de -oN subs.txt               # save one per line
       subx db -d telekom.de -oX ';:subs.txt'           # save semicolon-separated
       subx db -d telekom.de -oX ' :subs.txt'           # save space-separated
@@ -298,7 +417,7 @@ def db(
       subx db -C "SELECT subdomain FROM subdomain WHERE target='telekom.de' LIMIT 10"
       subx db -C "SELECT ..." -oX ';:out.txt'          # query + custom output
     """
-    asyncio.run(_db(domain, filter_plugin, new_since, delete, output_n, output_x, raw_query))
+    asyncio.run(_db(domain, web, filter_plugin, new_since, delete, output_n, output_x, raw_query))
 
 
 @app.command("dev-migrate", context_settings=HELP_NAMES)
@@ -341,6 +460,7 @@ async def _db_migrate(backup: bool) -> None:
 
 async def _db(
     domain: Optional[str],
+    web: bool,
     filter_plugin: Optional[str],
     new_since: Optional[str],
     delete: bool,
@@ -352,7 +472,7 @@ async def _db(
     storage = StorageManager()
     await storage.init()
     try:
-        await _db_dispatch(storage, domain, filter_plugin, new_since, delete, output_n, output_x, raw_query)
+        await _db_dispatch(storage, domain, web, filter_plugin, new_since, delete, output_n, output_x, raw_query)
     finally:
         await storage.close()
 
@@ -360,6 +480,7 @@ async def _db(
 async def _db_dispatch(
     storage: StorageManager,
     domain: Optional[str],
+    web: bool,
     filter_plugin: Optional[str],
     new_since: Optional[str],
     delete: bool,
@@ -372,7 +493,7 @@ async def _db_dispatch(
         return
 
     if not domain:
-        if any([delete, filter_plugin, new_since, output_n, output_x]):
+        if any([delete, filter_plugin, new_since, output_n, output_x, web]):
             _error("Filters and output flags require -d <domain>.")
         await _db_summary(storage)
         return
@@ -383,7 +504,7 @@ async def _db_dispatch(
         await _db_delete(storage, domain)
         return
 
-    await _db_query(storage, domain, filter_plugin, new_since, output_n, output_x)
+    await _db_query(storage, domain, web, filter_plugin, new_since, output_n, output_x)
 
 
 async def _db_summary(storage: StorageManager) -> None:
@@ -405,6 +526,7 @@ async def _db_delete(storage: StorageManager, domain: str) -> None:
 async def _db_query(
     storage: StorageManager,
     domain: str,
+    web: bool,
     filter_plugin: Optional[str],
     new_since: Optional[str],
     output_n: Optional[str],
@@ -433,7 +555,12 @@ async def _db_query(
         console.print(f"[dim]  No subdomains found for[/dim] [bold white]{domain}[/bold white]\n")
         return
 
-    _render_db_rows(rows, domain)
+    if web:
+        _render_db_rows_web(rows, domain)
+    else:
+        _render_db_rows(rows, domain)
+
+    console.print(f"\n[dim]  {len(rows)} result(s) for {domain}[/dim]\n")
 
     subdomains = [row.subdomain for row in rows]
 

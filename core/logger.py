@@ -7,3 +7,5 @@ def setup_logger(level: int = logging.ERROR) -> None:
     ))
     logging.root.setLevel(level)
     logging.root.handlers = [handler]
+
+logger = logging.getLogger("SubX")

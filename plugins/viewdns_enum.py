@@ -13,7 +13,6 @@ class ViewDnsPlugin(Plugin):
 
         try:
             async with aiohttp.ClientSession() as session:
-                # ── Page 1 ────────────────────────────────────────────
                 first_page = await self._fetch_page(session, domain, page=1)
                 if not first_page:
                     return []
@@ -21,7 +20,6 @@ class ViewDnsPlugin(Plugin):
                 subdomains.extend(self._extract(first_page))
                 total_pages = self._get_pagination(first_page)
 
-                # ── Remaining pages ───────────────────────────────────
                 for page in range(2, total_pages + 1):
                     data = await self._fetch_page(session, domain, page=page)
                     if data:
@@ -31,10 +29,6 @@ class ViewDnsPlugin(Plugin):
             self.logger.error("Request error: %s", e)
 
         return subdomains
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     async def _fetch_page(
         self,
@@ -53,6 +47,9 @@ class ViewDnsPlugin(Plugin):
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
                 if resp.status == 200:
                     return await resp.json()
+                if resp.status == 429:
+                    self.logger.warning("API credit is over (HTTP 429).")
+                    return None
                 self.logger.error("HTTP %d on page %d", resp.status, page)
                 return None
         except aiohttp.ClientError as e:

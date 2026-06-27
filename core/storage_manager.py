@@ -44,6 +44,48 @@ class StorageManager:
     async def close(self) -> None:
         await self.engine.dispose()
 
+    async def update_httpx_results(
+        self, target: str, results: list[dict]
+    ) -> int:
+        """Persist httpx liveness-probe results onto existing Subdomain rows.
+
+        :param target: the scope these results belong to
+        :param results: list of dicts, each with at least "subdomain" plus
+            any of "alive", "status_code", "title"
+        :return: number of rows updated
+        """
+        self._ensure_initialized()
+        if not results:
+            return 0
+
+        updated = 0
+        chunk_size = 450
+        async with self._session() as session:
+            async with session.begin():
+                for i in range(0, len(results), chunk_size):
+                    batch = results[i : i + chunk_size]
+                    for row in batch:
+                        sub = row.get("subdomain")
+                        if not sub:
+                            continue
+                        values = {
+                            k: row[k]
+                            for k in ("alive", "status_code", "title")
+                            if k in row
+                        }
+                        if not values:
+                            continue
+                        result = await session.execute(
+                            update(Subdomain)
+                            .where(
+                                Subdomain.target == target,
+                                Subdomain.subdomain == sub,
+                            )
+                            .values(**values)
+                        )
+                        updated += result.rowcount
+        return updated
+
     async def migrate(self, backup: bool = True) -> list[str]:
         """Compare the model schema against the live DB and add missing columns.
 
@@ -52,6 +94,8 @@ class StorageManager:
 
         Returns a list of column names that were added.
         """
+        self._ensure_initialized()
+
         db_path = self._resolve_db_path()
         if db_path and backup and db_path.exists():
             backup_path = db_path.with_suffix(
@@ -77,8 +121,8 @@ class StorageManager:
                     continue
 
                 col_type = col.type.compile(dialect=self.engine.dialect)
-                stmt = f'ALTER TABLE subdomain ADD COLUMN "{col.name}" {col_type}'
-                await conn.execute(text(stmt))
+                statement = f'ALTER TABLE subdomain ADD COLUMN "{col.name}" {col_type}'
+                await conn.execute(text(statement))
                 added.append(col.name)
                 logger.info("Added column: %s (%s)", col.name, col_type)
 
