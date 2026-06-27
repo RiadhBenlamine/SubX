@@ -21,7 +21,7 @@ class HttpxTool(Tool):
 
         try:
             stdout, stderr = await self._execute(
-                ["-silent", "-json"],
+                ["-silent", "-json", "-t 50"],
                 input_data=input_data,
                 timeout=timeout,
             )
