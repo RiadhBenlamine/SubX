@@ -63,12 +63,20 @@ To view a list of all tracked target domains, their subdomain counts, and when t
 ```bash
 uv run python main.py db
 ```
+<img width="727" height="523" alt="Database view" src="https://github.com/user-attachments/assets/155956a6-13ef-4414-816c-665ab6f0f7a1" />
+
 
 ### 3. Query Stored Subdomains
 Retrieve all stored subdomains for a specific target domain:
 ```bash
 uv run python main.py db -d example.com
 ```
+### 4. Http probe discovered subdomains
+Using httpx to probe subdomains
+```bash
+uv run python main.py http-probe -d example
+```
+<img width="1614" height="894" alt="View Probes http" src="https://github.com/user-attachments/assets/f01b7a15-7fd6-4be9-a5cd-828ae9ef3d2b" />
 
 #### Filter Queries
 Filter results by a specific plugin:
