@@ -1,0 +1,1077 @@
+PLR0913 Too many arguments in function definition (8 > 5)
+  --> core\cmd\db.py:27:5
+   |
+27 | def db(
+   |     ^^
+28 |     domain:        Optional[str] = typer.Option(None,  "-d", "--domain",       help="Target domain. Omit to list all tracked domains."…
+29 |     web:           bool          = typer.Option(False, "--web",                help="Show ALIVE, HTTP STATUS, and TITLE columns instea…
+   |
+
+E501 Line too long (136 > 88)
+  --> core\cmd\db.py:28:89
+   |
+27 | …
+28 | …n(None,  "-d", "--domain",       help="Target domain. Omit to list all tracked domains."),
+   |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+29 | …n(False, "--web",                help="Show ALIVE, HTTP STATUS, and TITLE columns instead of source/timestamps."),
+30 | …n(None,  "--filter-plugin",       help="Filter results by plugin name."),
+   |
+
+E501 Line too long (160 > 88)
+  --> core\cmd\db.py:29:89
+   |
+27 | …
+28 | …", "--domain",       help="Target domain. Omit to list all tracked domains."),
+29 | …web",                help="Show ALIVE, HTTP STATUS, and TITLE columns instead of source/timestamps."),
+   |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+30 | …filter-plugin",       help="Filter results by plugin name."),
+31 | …new-since",           help="Show subdomains first seen after YYYY-MM-DD."),
+   |
+
+E501 Line too long (119 > 88)
+  --> core\cmd\db.py:30:89
+   |
+28 |     domain:        Optional[str] = typer.Option(None,  "-d", "--domain",       help="Target domain. Omit to list all tracked domains."…
+29 |     web:           bool          = typer.Option(False, "--web",                help="Show ALIVE, HTTP STATUS, and TITLE columns instea…
+30 |     filter_plugin: Optional[str] = typer.Option(None,  "--filter-plugin",       help="Filter results by plugin name."),
+   |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+31 |     new_since:     Optional[str] = typer.Option(None,  "--new-since",           help="Show subdomains first seen after YYYY-MM-DD."),
+32 |     delete:        bool          = typer.Option(False, "--delete",               help="Delete all records for the target domain."),
+   |
+
+E501 Line too long (133 > 88)
+  --> core\cmd\db.py:31:89
+   |
+29 | …ion(False, "--web",                help="Show ALIVE, HTTP STATUS, and TITLE columns instead of source/timestamps."),
+30 | …ion(None,  "--filter-plugin",       help="Filter results by plugin name."),
+31 | …ion(None,  "--new-since",           help="Show subdomains first seen after YYYY-MM-DD."),
+   |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+32 | …ion(False, "--delete",               help="Delete all records for the target domain."),
+33 | …ion(None,  "-oN",                   help="Save subdomains to file (one per line)."),
+   |
+
+E501 Line too long (131 > 88)
+  --> core\cmd\db.py:32:89
+   |
+30 | …tion(None,  "--filter-plugin",       help="Filter results by plugin name."),
+31 | …tion(None,  "--new-since",           help="Show subdomains first seen after YYYY-MM-DD."),
+32 | …tion(False, "--delete",               help="Delete all records for the target domain."),
+   |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+33 | …tion(None,  "-oN",                   help="Save subdomains to file (one per line)."),
+34 | …tion(None,  "-oX",                   help="Save subdomains to file with custom separator. Use -oX '<sep>:<file>' e.g. ' :out.txt' or …
+   |
+
+E501 Line too long (128 > 88)
+  --> core\cmd\db.py:33:89
+   |
+31 |     new_since:     Optional[str] = typer.Option(None,  "--new-since",           help="Show subdomains first seen after YYYY-MM-DD."),
+32 |     delete:        bool          = typer.Option(False, "--delete",               help="Delete all records for the target domain."),
+33 |     output_n:      Optional[str] = typer.Option(None,  "-oN",                   help="Save subdomains to file (one per line)."),
+   |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+34 |     output_x:      Optional[str] = typer.Option(None,  "-oX",                   help="Save subdomains to file with custom separator. U…
+35 |     raw_query:     Optional[str] = typer.Option(None,  "-C", "--custom-query",  help="Run a raw SELECT query against the DB. e.g. -C \…
+   |
+
+E501 Line too long (190 > 88)
+  --> core\cmd\db.py:34:89
+   |
+32 | …        help="Delete all records for the target domain."),
+33 | …       help="Save subdomains to file (one per line)."),
+34 | …       help="Save subdomains to file with custom separator. Use -oX '<sep>:<file>' e.g. ' :out.txt' or ';:out.txt'"),
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+35 | …ery",  help="Run a raw SELECT query against the DB. e.g. -C \"SELECT subdomain FROM subdomain WHERE target='x.com'\""),
+36 | …
+   |
+
+E501 Line too long (192 > 88)
+  --> core\cmd\db.py:35:89
+   |
+33 | …      help="Save subdomains to file (one per line)."),
+34 | …      help="Save subdomains to file with custom separator. Use -oX '<sep>:<file>' e.g. ' :out.txt' or ';:out.txt'"),
+35 | …ry",  help="Run a raw SELECT query against the DB. e.g. -C \"SELECT subdomain FROM subdomain WHERE target='x.com'\""),
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+36 | …
+37 | …
+   |
+
+E501 Line too long (116 > 88)
+  --> core\cmd\db.py:44:89
+   |
+42 |       subx db                                          # summary of all targets
+43 |       subx db -d telekom.de                            # list all subdomains
+44 |       subx db -d telekom.de --web                      # show alive/status/title (needs `subx http-probe` run first)
+   |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+45 |       subx db -d telekom.de -oN subs.txt               # save one per line
+46 |       subx db -d telekom.de -oX ';:subs.txt'           # save semicolon-separated
+   |
+
+E501 Line too long (98 > 88)
+  --> core\cmd\db.py:53:89
+   |
+51 |       subx db -C "SELECT ..." -oX ';:out.txt'          # query + custom output
+52 |     """
+53 |     asyncio.run(_db(domain, web, filter_plugin, new_since, delete, output_n, output_x, raw_query))
+   |                                                                                         ^^^^^^^^^^
+   |
+
+PLR0913 Too many arguments in function definition (8 > 5)
+  --> core\cmd\db.py:56:11
+   |
+56 | async def _db(
+   |           ^^^
+57 |     domain: Optional[str],
+58 |     web: bool,
+   |
+
+E501 Line too long (95 > 88)
+   --> core\cmd\db.py:101:89
+    |
+ 99 |     count = await service.delete_domain(domain)
+100 |     if count == 0:
+101 |         console.print(f"[dim]  No records found for[/dim] [bold white]{domain}[/bold white]\n")
+    |                                                                                         ^^^^^^^
+102 |     else:
+103 |         from core.ui.console import success
+    |
+
+PLC0415 `import` should be at the top-level of a file
+   --> core\cmd\db.py:103:9
+    |
+101 |         console.print(f"[dim]  No records found for[/dim] [bold white]{domain}[/bold white]\n")
+102 |     else:
+103 |         from core.ui.console import success
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+104 |         success(f"Deleted [bold white]{count}[/bold white] records for [bold white]{domain}[/bold white]")
+    |
+
+E501 Line too long (106 > 88)
+   --> core\cmd\db.py:104:89
+    |
+102 |     else:
+103 |         from core.ui.console import success
+104 |         success(f"Deleted [bold white]{count}[/bold white] records for [bold white]{domain}[/bold white]")
+    |                                                                                         ^^^^^^^^^^^^^^^^^^
+    |
+
+PLR0913 Too many arguments in function definition (7 > 5)
+   --> core\cmd\db.py:107:11
+    |
+107 | async def _db_query(
+    |           ^^^^^^^^^
+108 |     service: DbService,
+109 |     domain: str,
+    |
+
+E501 Line too long (110 > 88)
+   --> core\cmd\db.py:118:89
+    |
+116 |     since_dt = None
+117 |     if filter_plugin:
+118 |         info(f"Target : [bold white]{domain}[/bold white]  Plugin : [bold white]{filter_plugin}[/bold white]")
+    |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^
+119 |     elif new_since:
+120 |         try:
+    |
+
+E501 Line too long (109 > 88)
+   --> core\cmd\db.py:125:89
+    |
+123 |             error("Invalid date format. Use YYYY-MM-DD.")
+124 |             return
+125 |         info(f"Target : [bold white]{domain}[/bold white]  New since : [bold white]{new_since}[/bold white]")
+    |                                                                                         ^^^^^^^^^^^^^^^^^^^^^
+126 |     else:
+127 |         info(f"Target : [bold white]{domain}[/bold white]")
+    |
+
+E501 Line too long (96 > 88)
+   --> core\cmd\db.py:129:89
+    |
+127 |         info(f"Target : [bold white]{domain}[/bold white]")
+128 |
+129 |     rows = await service.get_subdomains(domain, filter_plugin=filter_plugin, new_since=since_dt)
+    |                                                                                         ^^^^^^^^
+130 |
+131 |     console.print()
+    |
+
+E501 Line too long (98 > 88)
+   --> core\cmd\db.py:134:89
+    |
+133 |     if not rows:
+134 |         console.print(f"[dim]  No subdomains found for[/dim] [bold white]{domain}[/bold white]\n")
+    |                                                                                         ^^^^^^^^^^
+135 |         return
+    |
+
+RUF015 Prefer `next(iter(rows[0].keys()))` over single element slice
+   --> core\cmd\db.py:175:17
+    |
+173 |     render_raw_rows(rows)
+174 |
+175 |     first_col = list(rows[0].keys())[0]
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^
+176 |     values = [str(row[first_col]) for row in rows if row.get(first_col) is not None]
+    |
+help: Replace with `next(iter(rows[0].keys()))`
+
+F401 [*] `core.ui.console.warn` imported but unused
+ --> core\cmd\enum.py:8:44
+  |
+6 | from core.services.enum_service import EnumService
+7 | from core.ui.banner import banner
+8 | from core.ui.console import console, info, warn, error
+  |                                            ^^^^
+9 | from core.ui.renderers import render_enum_results
+  |
+help: Remove unused import: `core.ui.console.warn`
+
+E501 Line too long (98 > 88)
+  --> core\cmd\enum.py:20:89
+   |
+19 | def enum(
+20 |     config_file: str = typer.Option(..., "-c", "--config", help="Path to YAML/JSON config file."),
+   |                                                                                         ^^^^^^^^^^
+21 |     save: bool       = typer.Option(True, "--save/--no-save", help="Save results to database."),
+22 | ) -> None:
+   |
+
+E501 Line too long (96 > 88)
+  --> core\cmd\enum.py:21:89
+   |
+19 | def enum(
+20 |     config_file: str = typer.Option(..., "-c", "--config", help="Path to YAML/JSON config file."),
+21 |     save: bool       = typer.Option(True, "--save/--no-save", help="Save results to database."),
+   |                                                                                         ^^^^^^^^
+22 | ) -> None:
+23 |     """[bold cyan]Enumerate subdomains[/bold cyan] for target domain(s)."""
+   |
+
+E501 Line too long (106 > 88)
+  --> core\cmd\migrate.py:18:89
+   |
+17 | def db_migrate(
+18 |     no_backup: bool = typer.Option(False, "--no-backup", help="Skip creating a backup before migrating."),
+   |                                                                                         ^^^^^^^^^^^^^^^^^^
+19 | ) -> None:
+20 |     """
+   |
+
+E501 Line too long (90 > 88)
+  --> core\cmd\migrate.py:21:89
+   |
+19 | ) -> None:
+20 |     """
+21 |     [bold cyan]Safely migrate the database schema[/bold cyan] to match the current models.
+   |                                                                                         ^^
+   |
+
+E501 Line too long (95 > 88)
+  --> core\cmd\migrate.py:45:89
+   |
+44 |     if added:
+45 |         success(f"Migration complete — added [bold white]{len(added)}[/bold white] column(s):")
+   |                                                                                         ^^^^^^^
+46 |         for col in added:
+47 |             console.print(f"  [dim]•[/dim]  [bold white]{col}[/bold white]")
+   |
+
+E501 Line too long (119 > 88)
+  --> core\cmd\probe.py:23:89
+   |
+22 | def http_probe(
+23 |     domain: str            = typer.Option(..., "-d", "--domain", help="Target domain to probe stored subdomains for."),
+   |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+24 |     output_n: Optional[str] = typer.Option(None, "-oN", help="Save alive subdomains to file (one per line)."),
+25 |     output_x: Optional[str] = typer.Option(None, "-oX", help="Save alive subdomains to file with custom separator. Use -oX '<sep>:<fil…
+   |
+
+E501 Line too long (110 > 88)
+  --> core\cmd\probe.py:24:89
+   |
+22 | def http_probe(
+23 |     domain: str            = typer.Option(..., "-d", "--domain", help="Target domain to probe stored subdomains for."),
+24 |     output_n: Optional[str] = typer.Option(None, "-oN", help="Save alive subdomains to file (one per line)."),
+   |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^
+25 |     output_x: Optional[str] = typer.Option(None, "-oX", help="Save alive subdomains to file with custom separator. Use -oX '<sep>:<fil…
+26 | ) -> None:
+   |
+
+E501 Line too long (141 > 88)
+  --> core\cmd\probe.py:25:89
+   |
+23 | …-d", "--domain", help="Target domain to probe stored subdomains for."),
+24 | … "-oN", help="Save alive subdomains to file (one per line)."),
+25 | … "-oX", help="Save alive subdomains to file with custom separator. Use -oX '<sep>:<file>'."),
+   |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+26 | …
+27 | …
+   |
+
+E501 Line too long (93 > 88)
+  --> core\cmd\probe.py:43:89
+   |
+43 | async def _http_probe(domain: str, output_n: Optional[str], output_x: Optional[str]) -> None:
+   |                                                                                         ^^^^^
+44 |     banner()
+45 |     setup_logger()
+   |
+
+E501 Line too long (95 > 88)
+  --> core\cmd\probe.py:56:89
+   |
+54 |             results, rows = await service.probe_domain(domain)
+55 |     except ToolNotFoundError:
+56 |         error("httpx binary not found. Install it (go install / apt) or check your bin/ path.")
+   |                                                                                         ^^^^^^^
+57 |         return
+58 |     except ToolTimeoutError:
+   |
+
+E501 Line too long (89 > 88)
+  --> core\cmd\probe.py:59:89
+   |
+57 |         return
+58 |     except ToolTimeoutError:
+59 |         error(f"httpx timed out while probing {domain}. Try again or raise the timeout.")
+   |                                                                                         ^
+60 |         return
+61 |     except ToolExecutionError as e:
+   |
+
+E501 Line too long (135 > 88)
+  --> core\cmd\probe.py:66:89
+   |
+65 | …
+66 | …stored for[/dim] [bold white]{domain}[/bold white] [dim]— run `subx enum` first.[/dim]\n")
+   |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+67 | …
+   |
+
+E501 Line too long (99 > 88)
+  --> core\config_manager.py:46:89
+   |
+44 |                 else:
+45 |                     raise ValueError(
+46 |                         f"Unsupported config format '{self.config_path.suffix}'. Use YAML or JSON."
+   |                                                                                         ^^^^^^^^^^^
+47 |                     )
+48 |         except (yaml.YAMLError, json.JSONDecodeError) as e:
+   |
+
+E501 Line too long (92 > 88)
+  --> core\plugin_manager.py:37:89
+   |
+35 |                 missing = self._missing_keys(plugin)
+36 |                 if missing:
+37 |                     logger.warning("Skipping %s — missing config key(s): %s", name, missing)
+   |                                                                                         ^^^^
+38 |                     continue
+   |
+
+B905 `zip()` without an explicit `strict=` parameter
+  --> core\plugin_manager.py:62:30
+   |
+61 |         results: list[PluginResult] = []
+62 |         for name, outcome in zip(names, outcomes):
+   |                              ^^^^^^^^^^^^^^^^^^^^
+63 |             if isinstance(outcome, Exception):
+64 |                 logger.error("[%s] failed: %s", name, outcome)
+   |
+help: Add explicit value for parameter `strict=`
+
+PLW0211 First argument of a static method should not be named `cls`
+   --> core\plugin_manager.py:98:26
+    |
+ 97 |     @staticmethod
+ 98 |     def _is_valid_plugin(cls, module) -> bool:
+    |                          ^^^
+ 99 |         return (
+100 |             issubclass(cls, Plugin)
+    |
+
+E501 Line too long (100 > 88)
+   --> core\plugin_manager.py:118:89
+    |
+116 |                 keys = keys()
+117 |         except Exception as e:
+118 |             logger.warning("Could not read required_keys from %s: %s", plugin.__class__.__name__, e)
+    |                                                                                         ^^^^^^^^^^^^
+119 |             return []
+120 |         return [k for k in keys if self.config.get(k) in (None, "")]
+    |
+
+E501 Line too long (89 > 88)
+  --> core\processor.py:46:89
+   |
+44 |         )
+45 |
+46 |     def merge(self, base: ProcessedResult, incoming: ProcessedResult) -> ProcessedResult:
+   |                                                                                         ^
+47 |         for plugin_name, subs in incoming.by_plugin.items():
+48 |             if plugin_name in base.by_plugin:
+   |
+
+PLW2901 `for` loop variable `sub` overwritten by assignment target
+  --> core\processor.py:72:13
+   |
+71 |         for sub in subdomains:
+72 |             sub = sub.strip().lower()
+   |             ^^^
+73 |             if not sub:
+74 |                 continue
+   |
+
+E501 Line too long (89 > 88)
+  --> core\processor.py:87:89
+   |
+85 |         if subdomain in self._oos_exact or subdomain.endswith(self._oos_suffixes):
+86 |             return False
+87 |         return subdomain in self._scope_exact or subdomain.endswith(self._scope_suffixes)
+   |                                                                                         ^
+   |
+
+E501 Line too long (94 > 88)
+  --> core\services\enum_service.py:32:89
+   |
+31 |         if not pm.loaded_plugins:
+32 |             raise RuntimeError("No plugins loaded. Check your API keys or sources in config.")
+   |                                                                                         ^^^^^^
+33 |
+34 |         result = EnumResult(
+   |
+
+B905 `zip()` without an explicit `strict=` parameter
+  --> core\services\enum_service.py:53:38
+   |
+51 |             )
+52 |
+53 |             for domain, processed in zip(scope, domain_results):
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+54 |                 new_count = 0
+55 |                 if storage:
+   |
+help: Add explicit value for parameter `strict=`
+
+E501 Line too long (89 > 88)
+  --> core\services\enum_service.py:81:89
+   |
+79 |         wc_domains = processor.extract_wildcard_domains(processed)
+80 |
+81 |         wc_batches = await asyncio.gather(*(pm.execute_plugins(wc) for wc in wc_domains))
+   |                                                                                         ^
+82 |
+83 |         for wc_raw in wc_batches:
+   |
+
+RUF010 [*] Use explicit conversion flag
+  --> core\services\export_service.py:15:23
+   |
+13 |         f"Saved [bold white]{len(values)}[/bold white] entries → "
+14 |         f"[bold white]{output}[/bold white]  "
+15 |         f"[dim](sep: {repr(sep)})[/dim]"
+   |                       ^^^^^^^^^
+16 |     )
+   |
+help: Replace with conversion flag
+
+E501 Line too long (89 > 88)
+  --> core\tool.py:19:89
+   |
+17 |         self.returncode = returncode
+18 |         self.stderr = stderr
+19 |         super().__init__(f"{name} exited with code {returncode}: {stderr.strip()[:500]}")
+   |                                                                                         ^
+   |
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+   --> core\tool.py:110:13
+    |
+108 |               process.kill()
+109 |               await process.wait()
+110 | /             raise ToolTimeoutError(
+111 | |                 f"{self.TOOL_NAME} did not finish within {timeout}s"
+112 | |             )
+    | |_____________^
+113 |
+114 |           stdout = stdout_bytes.decode(errors="replace")
+    |
+
+RUF022 [*] `__all__` is not sorted
+  --> core\ui\__init__.py:12:11
+   |
+10 |   )
+11 |
+12 |   __all__ = [
+   |  ___________^
+13 | |     "banner",
+14 | |     "console",
+15 | |     "info",
+16 | |     "success",
+17 | |     "warn",
+18 | |     "error",
+19 | |     "make_table",
+20 | |     "render_db_summary",
+21 | |     "render_db_rows",
+22 | |     "render_db_rows_web",
+23 | |     "render_raw_rows",
+24 | |     "render_enum_results",
+25 | |     "render_http_probe_summary",
+26 | | ]
+   | |_^
+   |
+help: Apply an isort-style sorting to `__all__`
+
+RUF001 String contains ambiguous `›` (SINGLE RIGHT-POINTING ANGLE QUOTATION MARK). Did you mean `>` (GREATER-THAN SIGN)?
+  --> core\ui\console.py:10:34
+   |
+ 9 | def info(msg: str) -> None:
+10 |     console.print(f"[bold cyan]  ›[/bold cyan]  {msg}")
+   |                                  ^
+   |
+
+ARG001 Unused function argument: `domain`
+  --> core\ui\renderers.py:26:32
+   |
+26 | def render_db_rows(rows: list, domain: str) -> None:
+   |                                ^^^^^^
+27 |     table = make_table(
+28 |         ("SUBDOMAIN",  {"style": "white",     "no_wrap": True}),
+   |
+
+ARG001 Unused function argument: `domain`
+  --> core\ui\renderers.py:43:36
+   |
+43 | def render_db_rows_web(rows: list, domain: str) -> None:
+   |                                    ^^^^^^
+44 |     table = make_table(
+45 |         ("SUBDOMAIN", {"style": "white"}),
+   |
+
+E501 Line too long (96 > 88)
+  --> core\ui\renderers.py:74:89
+   |
+73 |     columns = list(rows[0].keys())
+74 |     table = make_table(*[(col.upper(), {"style": "white", "no_wrap": True}) for col in columns])
+   |                                                                                         ^^^^^^^^
+75 |
+76 |     for row in rows:
+   |
+
+E501 Line too long (91 > 88)
+  --> plugins\alienvault_enum.py:23:89
+   |
+22 |         try:
+23 |             async with aiohttp.ClientSession(headers=headers, timeout=_TIMEOUT) as session:
+   |                                                                                         ^^^
+24 |                 async with session.get(_URL.format(domain=domain)) as resp:
+25 |                     if resp.status == 403:
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `403` with a constant variable
+  --> plugins\alienvault_enum.py:25:39
+   |
+23 |             async with aiohttp.ClientSession(headers=headers, timeout=_TIMEOUT) as session:
+24 |                 async with session.get(_URL.format(domain=domain)) as resp:
+25 |                     if resp.status == 403:
+   |                                       ^^^
+26 |                         self.logger.error("Invalid or unauthorized API key.")
+27 |                         return []
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `404` with a constant variable
+  --> plugins\alienvault_enum.py:28:39
+   |
+26 |                         self.logger.error("Invalid or unauthorized API key.")
+27 |                         return []
+28 |                     if resp.status == 404:
+   |                                       ^^^
+29 |                         self.logger.warning("Domain '%s' not found in OTX.", domain)
+30 |                         return []
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+  --> plugins\alienvault_enum.py:31:39
+   |
+29 |                         self.logger.warning("Domain '%s' not found in OTX.", domain)
+30 |                         return []
+31 |                     if resp.status != 200:
+   |                                       ^^^
+32 |                         self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+33 |                         return []
+   |
+
+E501 Line too long (89 > 88)
+  --> plugins\alienvault_enum.py:46:89
+   |
+44 |         }
+45 |
+46 |         self.logger.info("Found %d unique subdomains for '%s'.", len(subdomains), domain)
+   |                                                                                         ^
+47 |         return list(subdomains)
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+  --> plugins\anubisdb_enum.py:19:39
+   |
+17 |             async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+18 |                 async with session.get(url) as resp:
+19 |                     if resp.status != 200:
+   |                                       ^^^
+20 |                         self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+21 |                         return []
+   |
+
+E501 Line too long (101 > 88)
+  --> plugins\anubisdb_enum.py:28:89
+   |
+27 |         if not isinstance(data, list):
+28 |             self.logger.warning("Unexpected response type for '%s': %s", domain, type(data).__name__)
+   |                                                                                         ^^^^^^^^^^^^^
+29 |             return []
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+  --> plugins\bevigil_enum.py:22:39
+   |
+20 |             async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+21 |                 async with session.get(url, headers=headers) as resp:
+22 |                     if resp.status != 200:
+   |                                       ^^^
+23 |                         self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+24 |                         return []
+   |
+
+E501 Line too long (91 > 88)
+  --> plugins\bgp_enum.py:31:89
+   |
+29 |             try:
+30 |                 async with aiohttp.ClientSession() as session:
+31 |                     async with session.get(url, headers=headers, timeout=_TIMEOUT) as resp:
+   |                                                                                         ^^^
+32 |                         if resp.status != 200:
+33 |                             self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+  --> plugins\bgp_enum.py:32:43
+   |
+30 |                 async with aiohttp.ClientSession() as session:
+31 |                     async with session.get(url, headers=headers, timeout=_TIMEOUT) as resp:
+32 |                         if resp.status != 200:
+   |                                           ^^^
+33 |                             self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+34 |                             return subdomains
+   |
+
+E501 Line too long (89 > 88)
+  --> plugins\bgp_enum.py:33:89
+   |
+31 |                     async with session.get(url, headers=headers, timeout=_TIMEOUT) as resp:
+32 |                         if resp.status != 200:
+33 |                             self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+   |                                                                                         ^
+34 |                             return subdomains
+35 |                         data = await resp.json()
+   |
+
+E501 Line too long (98 > 88)
+  --> plugins\bgp_enum.py:39:89
+   |
+37 |                             if name := entry.get("domain"):
+38 |                                 subdomains.append(name)
+39 |                         self.logger.info("Found %d subdomains for '%s'.", len(subdomains), domain)
+   |                                                                                         ^^^^^^^^^^
+40 |                         return subdomains
+41 |             except (aiohttp.ClientError, TimeoutError) as e:
+   |
+
+E501 Line too long (89 > 88)
+  --> plugins\bgp_enum.py:43:89
+   |
+41 |             except (aiohttp.ClientError, TimeoutError) as e:
+42 |                 self.logger.warning(
+43 |                     "Attempt %d/%d failed for '%s': %s", attempt, _MAX_RETRIES, domain, e
+   |                                                                                         ^
+44 |                 )
+45 |                 await asyncio.sleep(2 ** (attempt - 1))
+   |
+
+PLC0415 `import` should be at the top-level of a file
+  --> plugins\censys_enum.py:12:13
+   |
+10 |     async def run(self, domain: str):
+11 |         try:
+12 |             from censys_platform import SDK
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |         except ImportError:
+14 |             self.logger.warning("censys-platform SDK not installed, skipping.")
+   |
+
+E501 Line too long (117 > 88)
+  --> plugins\censys_enum.py:47:89
+   |
+45 |         except Exception as e:
+46 |             err_str = str(e).lower()
+47 |             if "quota" in err_str or "rate" in err_str or "limit" in err_str or "403" in err_str or "429" in err_str:
+   |                                                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+48 |                 self.logger.warning("Quota/rate limit exceeded, skipping: %s", e)
+49 |             else:
+   |
+
+E501 Line too long (93 > 88)
+  --> plugins\chaos_enum.py:19:89
+   |
+17 |         try:
+18 |             async with aiohttp.ClientSession(headers=headers) as session:
+19 |                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+   |                                                                                         ^^^^^
+20 |                     if resp.status == 401:
+21 |                         self.logger.error("Invalid API key.")
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `401` with a constant variable
+  --> plugins\chaos_enum.py:20:39
+   |
+18 |             async with aiohttp.ClientSession(headers=headers) as session:
+19 |                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+20 |                     if resp.status == 401:
+   |                                       ^^^
+21 |                         self.logger.error("Invalid API key.")
+22 |                         return []
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `404` with a constant variable
+  --> plugins\chaos_enum.py:23:39
+   |
+21 |                         self.logger.error("Invalid API key.")
+22 |                         return []
+23 |                     if resp.status == 404:
+   |                                       ^^^
+24 |                         self.logger.warning("Domain %s not found in Chaos DB.", domain)
+25 |                         return []
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+  --> plugins\chaos_enum.py:26:39
+   |
+24 |                         self.logger.warning("Domain %s not found in Chaos DB.", domain)
+25 |                         return []
+26 |                     if resp.status != 200:
+   |                                       ^^^
+27 |                         self.logger.error("HTTP %d for %s", resp.status, domain)
+28 |                         return []
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+  --> plugins\crtsh_enum.py:18:39
+   |
+16 |             async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+17 |                 async with session.get(url) as resp:
+18 |                     if resp.status != 200:
+   |                                       ^^^
+19 |                         self.logger.warning("HTTP %d for %s", resp.status, domain)
+20 |                         return []
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+  --> plugins\hackertarget_enum.py:17:39
+   |
+15 |             async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+16 |                 async with session.get(url) as resp:
+17 |                     if resp.status != 200:
+   |                                       ^^^
+18 |                         self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
+19 |                         return []
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `500` with a constant variable
+  --> plugins\shodan_enum.py:42:34
+   |
+41 |         for query in queries:
+42 |             if len(subdomains) > 500 and query != f"hostname:.{domain}":
+   |                                  ^^^
+43 |                 self.logger.info("Skipping '%s', already have %d results", query, len(subdomains))
+44 |                 continue
+   |
+
+E501 Line too long (98 > 88)
+  --> plugins\shodan_enum.py:43:89
+   |
+41 |         for query in queries:
+42 |             if len(subdomains) > 500 and query != f"hostname:.{domain}":
+43 |                 self.logger.info("Skipping '%s', already have %d results", query, len(subdomains))
+   |                                                                                         ^^^^^^^^^^
+44 |                 continue
+   |
+
+E501 Line too long (92 > 88)
+  --> plugins\shodan_enum.py:58:89
+   |
+56 |                     pages = min(pages, page_cap)
+57 |
+58 |                 self.logger.info("Query '%s' -> %d results (%d pages)", query, total, pages)
+   |                                                                                         ^^^^
+59 |
+60 |                 self._extract(results, domain, subdomains)
+   |
+
+E501 Line too long (92 > 88)
+  --> plugins\shodan_enum.py:64:89
+   |
+62 |                 for page in range(2, pages + 1):
+63 |                     try:
+64 |                         page_results = await asyncio.to_thread(api.search, query, page=page)
+   |                                                                                         ^^^^
+65 |                         self._extract(page_results, domain, subdomains)
+66 |                         self.logger.info(
+   |
+
+E501 Line too long (93 > 88)
+  --> plugins\shodan_enum.py:78:89
+   |
+76 |                             )
+77 |                             return list(subdomains)
+78 |                         self.logger.error("API error on page %d of '%s': %s", page, query, e)
+   |                                                                                         ^^^^^
+79 |                         break
+   |
+
+E501 Line too long (95 > 88)
+   --> plugins\shodan_enum.py:102:89
+    |
+100 |         """Check if a Shodan API error is quota/credit related."""
+101 |         msg = str(error).lower()
+102 |         return any(kw in msg for kw in ("quota", "credit", "limit", "upgrade", "insufficient"))
+    |                                                                                         ^^^^^^^
+103 |
+104 |     async def _check_membership(self, api: Shodan) -> bool | None:
+    |
+
+PLR0912 Too many branches (16 > 12)
+  --> plugins\urlscan_enum.py:19:15
+   |
+17 |         return ["URLSCAN_API"]
+18 |
+19 |     async def run(self, domain: str):
+   |               ^^^
+20 |         subdomains = set()
+21 |         headers = {
+   |
+
+PLR0915 Too many statements (55 > 50)
+  --> plugins\urlscan_enum.py:19:15
+   |
+17 |         return ["URLSCAN_API"]
+18 |
+19 |     async def run(self, domain: str):
+   |               ^^^
+20 |         subdomains = set()
+21 |         headers = {
+   |
+
+E501 Line too long (91 > 88)
+  --> plugins\urlscan_enum.py:34:89
+   |
+33 |         try:
+34 |             async with aiohttp.ClientSession(headers=headers, timeout=_TIMEOUT) as session:
+   |                                                                                         ^^^
+35 |                 page = 1
+36 |                 while url and page <= MAX_PAGES:
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `429` with a constant variable
+  --> plugins\urlscan_enum.py:51:55
+   |
+49 |                                     return list(subdomains)
+50 |
+51 |                                 if response.status == 429:
+   |                                                       ^^^
+52 |                                     rate_limit_retries += 1
+53 |                                     if rate_limit_retries > MAX_RATE_LIMIT_RETRIES:
+   |
+
+E501 Line too long (94 > 88)
+  --> plugins\urlscan_enum.py:62:89
+   |
+60 |                                         return list(subdomains)
+61 |
+62 |                                     retry_after = int(response.headers.get("Retry-After", 60))
+   |                                                                                         ^^^^^^
+63 |                                     self.logger.warning(
+64 |                                         "Rate limited, sleeping %ds (attempt %d/%d)",
+   |
+
+E501 Line too long (99 > 88)
+   --> plugins\urlscan_enum.py:102:89
+    |
+100 | …                     sort_val = last_result.get("sort")
+101 | …                     if sort_val:
+102 | …                         params["search_after"] = ",".join(str(s) for s in sort_val)
+    |                                                                           ^^^^^^^^^^^
+103 | …                         page += 1
+104 | …                     else:
+    |
+
+E501 Line too long (89 > 88)
+  --> plugins\viewdns_enum.py:48:89
+   |
+46 |         )
+47 |         try:
+48 |             async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+   |                                                                                         ^
+49 |                 if resp.status == 200:
+50 |                     return await resp.json()
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `200` with a constant variable
+  --> plugins\viewdns_enum.py:49:35
+   |
+47 |         try:
+48 |             async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+49 |                 if resp.status == 200:
+   |                                   ^^^
+50 |                     return await resp.json()
+51 |                 if resp.status == 429:
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `429` with a constant variable
+  --> plugins\viewdns_enum.py:51:35
+   |
+49 |                 if resp.status == 200:
+50 |                     return await resp.json()
+51 |                 if resp.status == 429:
+   |                                   ^^^
+52 |                     self.logger.warning("API credit is over (HTTP 429).")
+53 |                     return None
+   |
+
+E501 Line too long (91 > 88)
+  --> plugins\virustotal_enum.py:24:89
+   |
+23 |         try:
+24 |             async with aiohttp.ClientSession(headers=headers, timeout=_TIMEOUT) as session:
+   |                                                                                         ^^^
+25 |                 while url:
+26 |                     rate_limit_retries = 0
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `403` with a constant variable
+  --> plugins\virustotal_enum.py:32:55
+   |
+30 |                             async with session.get(url) as response:
+31 |
+32 |                                 if response.status == 403:
+   |                                                       ^^^
+33 |                                     self.logger.warning(
+34 |                                         "Quota exhausted (HTTP 403), skipping. "
+   |
+
+PLR2004 Magic value used in comparison, consider replacing `429` with a constant variable
+  --> plugins\virustotal_enum.py:40:55
+   |
+38 |                                     return subdomains
+39 |
+40 |                                 if response.status == 429:
+   |                                                       ^^^
+41 |                                     rate_limit_retries += 1
+42 |                                     if rate_limit_retries > MAX_RATE_LIMIT_RETRIES:
+   |
+
+E501 Line too long (89 > 88)
+  --> plugins\virustotal_enum.py:51:89
+   |
+49 |                                         return subdomains
+50 |
+51 |                                     retry_after = int(response.headers.get("Retry-After",
+   |                                                                                         ^
+52 |                                                       response.headers.get("X-RateLimit-Reset", 60)))
+53 |                                     self.logger.warning("Rate limited, sleeping %ds (attempt %d/%d)",
+   |
+
+E501 Line too long (101 > 88)
+  --> plugins\virustotal_enum.py:52:89
+   |
+51 | …                     retry_after = int(response.headers.get("Retry-After",
+52 | …                                       response.headers.get("X-RateLimit-Reset", 60)))
+   |                                                                           ^^^^^^^^^^^^^
+53 | …                     self.logger.warning("Rate limited, sleeping %ds (attempt %d/%d)",
+54 | …                                    retry_after, rate_limit_retries, MAX_RATE_LIMIT_RETRIES)
+   |
+
+E501 Line too long (101 > 88)
+  --> plugins\virustotal_enum.py:53:89
+   |
+51 | …                     retry_after = int(response.headers.get("Retry-After",
+52 | …                                       response.headers.get("X-RateLimit-Reset", 60)))
+53 | …                     self.logger.warning("Rate limited, sleeping %ds (attempt %d/%d)",
+   |                                                                           ^^^^^^^^^^^^^
+54 | …                                    retry_after, rate_limit_retries, MAX_RATE_LIMIT_RETRIES)
+55 | …                     await asyncio.sleep(retry_after)
+   |
+
+E501 Line too long (107 > 88)
+  --> plugins\virustotal_enum.py:54:89
+   |
+52 | …                                       response.headers.get("X-RateLimit-Reset", 60)))
+53 | …                     self.logger.warning("Rate limited, sleeping %ds (attempt %d/%d)",
+54 | …                                    retry_after, rate_limit_retries, MAX_RATE_LIMIT_RETRIES)
+   |                                                                           ^^^^^^^^^^^^^^^^^^^
+55 | …                     await asyncio.sleep(retry_after)
+56 | …                     continue
+   |
+
+E501 Line too long (100 > 88)
+  --> plugins\virustotal_enum.py:63:89
+   |
+61 |                                 batch = [item["id"] for item in data.get("data", [])]
+62 |                                 subdomains.extend(batch)
+63 |                                 self.logger.info("Fetched %d subdomains so far...", len(subdomains))
+   |                                                                                         ^^^^^^^^^^^^
+64 |
+65 |                                 url = data.get("links", {}).get("next")
+   |
+
+E501 Line too long (95 > 88)
+  --> plugins\virustotal_enum.py:66:89
+   |
+65 |                                 url = data.get("links", {}).get("next")
+66 |                                 break  # break inner retry loop, continue outer pagination loop
+   |                                                                                         ^^^^^^^
+67 |
+68 |                         except aiohttp.ClientResponseError as e:
+   |
+
+E501 Line too long (99 > 88)
+  --> plugins\virustotal_enum.py:69:89
+   |
+68 |                         except aiohttp.ClientResponseError as e:
+69 |                             self.logger.error("HTTP error %d: %s — skipping.", e.status, e.message)
+   |                                                                                         ^^^^^^^^^^^
+70 |                             return subdomains
+   |
+
+RUF059 Unpacked variable `stderr` is never used
+  --> tools\httpx.py:37:21
+   |
+36 |         try:
+37 |             stdout, stderr = await self._execute(
+   |                     ^^^^^^
+38 |                 ["-silent", "-json"],
+39 |                 input_data=input_data,
+   |
+help: Prefix it with an underscore or any other dummy variable pattern
+
+PLW2901 `for` loop variable `line` overwritten by assignment target
+  --> tools\httpx.py:56:13
+   |
+54 |         raw_results = []
+55 |         for line in stdout.splitlines():
+56 |             line = line.strip()
+   |             ^^^^
+57 |             if not line:
+58 |                 continue
+   |
+
+Found 101 errors.
+[*] 3 fixable with the `--fix` option (4 hidden fixes can be enabled with the `--unsafe-fixes` option).
