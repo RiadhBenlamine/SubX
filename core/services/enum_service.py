@@ -1,0 +1,90 @@
+import asyncio
+from dataclasses import dataclass, field
+
+from core.config_manager import ConfigManager
+from core.models import ProcessedResult
+from core.plugin_manager import PluginManager
+from core.processor import Processor
+from core.storage_manager import StorageManager
+
+
+@dataclass
+class EnumResult:
+    """Structured output from a full enumeration run."""
+    scope: list[str]
+    out_of_scope: list[str]
+    sources: list[str] | None
+    plugin_names: list[str]
+    processed_by_target: dict[str, dict] = field(default_factory=dict)
+
+
+class EnumService:
+    """Orchestrates subdomain enumeration: config → plugins → process → store."""
+
+    async def run(self, config_path: str, save: bool) -> EnumResult:
+        config = self._load_config(config_path)
+        scope = config.get_scope()
+
+        pm = PluginManager(config.get_api_keys())
+        pm.load_plugins(allowed=config.get_sources())
+
+        if not pm.loaded_plugins:
+            raise RuntimeError("No plugins loaded. Check your API keys or sources in config.")
+
+        result = EnumResult(
+            scope=scope,
+            out_of_scope=config.get_out_of_scope(),
+            sources=config.get_sources(),
+            plugin_names=[p.__class__.__name__ for p in pm.loaded_plugins],
+        )
+
+        processor = Processor(scope=scope, out_of_scope=config.get_out_of_scope())
+
+        storage = None
+        if save:
+            storage = StorageManager()
+            await storage.init()
+
+        try:
+            domain_results = await asyncio.gather(
+                *(self._run_domain(pm, processor, domain) for domain in scope)
+            )
+
+            for domain, processed in zip(scope, domain_results):
+                new_count = 0
+                if storage:
+                    new_count = await storage.save(processed, target=domain)
+                result.processed_by_target[domain] = {
+                    "processed": processed,
+                    "new_count": new_count,
+                }
+        finally:
+            if storage:
+                await storage.close()
+
+        return result
+
+    async def _run_domain(
+        self,
+        pm: PluginManager,
+        processor: Processor,
+        domain: str,
+    ) -> ProcessedResult:
+        raw = await pm.execute_plugins(domain)
+        processed = processor.process(raw)
+
+        if not processor.has_wildcards(processed):
+            return processed
+
+        wc_domains = processor.extract_wildcard_domains(processed)
+
+        wc_batches = await asyncio.gather(*(pm.execute_plugins(wc) for wc in wc_domains))
+
+        for wc_raw in wc_batches:
+            processed = processor.merge(processed, processor.process(wc_raw))
+
+        return processed
+
+    @staticmethod
+    def _load_config(config_path: str) -> ConfigManager:
+        return ConfigManager(config_path=config_path)

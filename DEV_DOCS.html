@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SubX - Developer Documentation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        pre {
+            background-color: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+            overflow: auto;
+        }
+        code {
+            background-color: #f6f8fa;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #dfe2e5;
+            padding: 6px 13px;
+        }
+        th {
+            background-color: #f6f8fa;
+        }
+        blockquote {
+            border-left: 0.25em solid #dfe2e5;
+            color: #6a737d;
+            padding: 0 1em;
+            margin: 0;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+        a {
+            color: #0366d6;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="subx-developer-documentation">SubX — Developer Documentation</h1>
+<blockquote>
+<p>Internal reference for developing, maintaining, and extending the SubX subdomain recon framework.
+Updated to reflect the clean, service-oriented layered architecture.</p>
+</blockquote>
+<hr />
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#project-directory-structure">Project Directory Structure</a></li>
+<li><a href="#architecture-layers--file-roles">Architecture Layers &amp; File Roles</a></li>
+<li><a href="#1-cli-layer-corecmd">CLI Layer (<code>core/cmd/</code>)</a></li>
+<li><a href="#2-services-layer-coreservices">Services Layer (<code>core/services/</code>)</a></li>
+<li><a href="#3-ui-layer-coreui">UI Layer (<code>core/ui/</code>)</a></li>
+<li><a href="#4-infrastructure--managers">Infrastructure &amp; Managers</a></li>
+<li><a href="#data-models">Data Models</a></li>
+<li><a href="#how-to-write-a-plugin">How to Write a Plugin</a></li>
+<li><a href="#how-to-add-an-external-tool-wrapper">How to Add an External Tool (Wrapper)</a></li>
+<li><a href="#database-schema--migrations">Database Schema &amp; Migrations</a></li>
+<li><a href="#testing-plugins-and-tools">Testing Plugins and Tools</a></li>
+<li><a href="#common-development-recipes">Common Development Recipes</a></li>
+</ol>
+<hr />
+<h2 id="architecture-overview">Architecture Overview</h2>
+<p>SubX is structured using a clean, decoupled, layered architecture:</p>
+<pre><code class="language-mermaid">graph TD
+    subgraph CLI Layer [CLI Layer - core/cmd/]
+        MAIN[&quot;main.py (Thin Entry Point)&quot;]
+        CMD_INIT[&quot;__init__.py (App Setup)&quot;]
+        ENUM_CMD[&quot;enum.py&quot;]
+        DB_CMD[&quot;db.py&quot;]
+        PROBE_CMD[&quot;probe.py&quot;]
+        MIGRATE_CMD[&quot;migrate.py&quot;]
+    end
+
+    subgraph UI Layer [UI Layer - core/ui/]
+        BANNER[&quot;banner.py&quot;]
+        CONSOLE[&quot;console.py&quot;]
+        RENDERERS[&quot;renderers.py&quot;]
+    end
+
+    subgraph Services Layer [Services Layer - core/services/]
+        ENUM_SVC[&quot;enum_service.py&quot;]
+        DB_SVC[&quot;db_service.py&quot;]
+        PROBE_SVC[&quot;probe_service.py&quot;]
+        MIGRATE_SVC[&quot;migrate_service.py&quot;]
+        EXPORT_SVC[&quot;export_service.py&quot;]
+    end
+
+    subgraph Infrastructure [Infrastructure / Core Managers]
+        CONFIG_MGR[&quot;config_manager.py&quot;]
+        PLUGIN_MGR[&quot;plugin_manager.py&quot;]
+        TOOL_MGR[&quot;tool_manager.py&quot;]
+        STORAGE_MGR[&quot;storage_manager.py&quot;]
+        PROCESSOR[&quot;processor.py&quot;]
+    end
+
+    MAIN --&gt; CMD_INIT
+    CMD_INIT --&gt; ENUM_CMD &amp; DB_CMD &amp; PROBE_CMD &amp; MIGRATE_CMD
+
+    %% CLI dependencies
+    ENUM_CMD --&gt; ENUM_SVC &amp; RENDERERS &amp; CONSOLE &amp; BANNER
+    DB_CMD --&gt; DB_SVC &amp; RENDERERS &amp; CONSOLE &amp; BANNER
+    PROBE_CMD --&gt; PROBE_SVC &amp; RENDERERS &amp; CONSOLE &amp; BANNER
+    MIGRATE_CMD --&gt; MIGRATE_SVC &amp; CONSOLE &amp; BANNER
+
+    %% Service dependencies
+    ENUM_SVC --&gt; CONFIG_MGR &amp; PLUGIN_MGR &amp; PROCESSOR &amp; STORAGE_MGR
+    DB_SVC --&gt; STORAGE_MGR
+    PROBE_SVC --&gt; TOOL_MGR &amp; STORAGE_MGR
+    MIGRATE_SVC --&gt; STORAGE_MGR
+
+    %% Export utility usage
+    DB_CMD &amp; PROBE_CMD --&gt; EXPORT_SVC
+</code></pre>
+<h3 id="layering-rules">Layering Rules</h3>
+<p>To keep the architecture clean and maintainable, follow these import rules:
+* <strong>CLI commands (<code>core/cmd/*</code>)</strong> can import from <strong>Services</strong> (<code>core/services/*</code>) and <strong>UI</strong> (<code>core/ui/*</code>). They must <strong>never</strong> instantiate or directly call infrastructure managers (like <code>StorageManager</code> or <code>PluginManager</code>).
+* <strong>Services (<code>core/services/*</code>)</strong> own the business logic and coordinate the infrastructure components. They can import from <code>core/storage_manager.py</code>, <code>core/plugin_manager.py</code>, etc. They must <strong>never</strong> import from UI or CLI layers.
+* <strong>UI (<code>core/ui/*</code>)</strong> is pure rendering and layout logic. It can import from <code>core/models.py</code> for type definitions. It must <strong>never</strong> import from CLI, Services, or perform I/O / DB queries.</p>
+<hr />
+<h2 id="project-directory-structure">Project Directory Structure</h2>
+<pre><code>SubX/
+├── main.py                        # Thin CLI entry point
+├── pyproject.toml                 # Package definition &amp; console script
+├── setup.py                       # Setuptools installation metadata
+├── config.yaml                    # Active runtime configuration
+├── config_samples/                # Templates and examples of config files
+├── core/                          # Framework Core
+│   ├── cmd/                       # CLI Command definitions (Typer routes)
+│   │   ├── __init__.py            # Typer app initialization and registration
+│   │   ├── enum.py                # &quot;subx enum&quot; route
+│   │   ├── db.py                  # &quot;subx db&quot; route
+│   │   ├── probe.py               # &quot;subx http-probe&quot; route
+│   │   └── migrate.py             # &quot;subx dev-migrate&quot; route
+│   ├── services/                  # Business Logic layer
+│   │   ├── __init__.py            # Service package re-exports
+│   │   ├── enum_service.py        # Orchestrates subdomain enumeration
+│   │   ├── db_service.py          # Interface for database actions
+│   │   ├── probe_service.py       # Orchestrates HTTP liveness probing
+│   │   ├── migrate_service.py     # Schema migrations orchestrator
+│   │   └── export_service.py      # Output file writing and parsing helpers
+│   ├── ui/                        # User Interface and rich formatting
+│   │   ├── __init__.py            # UI package re-exports
+│   │   ├── banner.py              # Print ascii banners
+│   │   ├── console.py             # Setup Rich Console and message logs
+│   │   └── renderers.py           # Functions to display tables, summary panels
+│   ├── config_manager.py          # Config file parses + API key parser
+│   ├── db_models.py               # SQLModel db schema
+│   ├── logger.py                  # Standard logger configuration
+│   ├── models.py                  # Dataclasses (PluginResult, ProcessedResult)
+│   ├── plugin.py                  # Base class for passive/active plugins
+│   ├── plugin_manager.py          # Plugin scanning, load, and concurrent execute
+│   ├── processor.py               # Domain classification (scope / wildcard)
+│   ├── storage_manager.py         # Database CRUD (async SQLModel wrapper)
+│   ├── tool.py                    # Base class for external binary tools (e.g. httpx)
+│   └── tool_manager.py            # Connects DB input/outputs to running tools
+├── plugins/                       # Subdomain Enumeration Plugins
+│   ├── crtsh_enum.py              # Cert transparency logs (no API key)
+│   ├── shodan_enum.py             # Shodan resolver (requires API key)
+│   └── ... (other passive plugins)
+├── tools/                         # External Command wrappers
+│   └── httpx.py                   # httpx tool wrapper definition
+├── bin/                           # Bundled Windows binaries (win32 only)
+│   └── httpx/
+│       └── httpx.exe
+└── tests/                         # Module and integration test scripts
+</code></pre>
+<hr />
+<h2 id="architecture-layers-file-roles">Architecture Layers &amp; File Roles</h2>
+<h3 id="1-cli-layer-corecmd">1. CLI Layer (<code>core/cmd/</code>)</h3>
+<p>Handles parsing command-line parameters, managing flags, and triggering high-level processes. It passes structured results to the UI layer.</p>
+<ul>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/main.py">main.py</a></strong>: Thin bootstrapper. It imports the Typer app from <code>core/cmd/__init__.py</code> and executes it.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/__init__.py"><strong>init</strong>.py</a></strong>: Instantiates the Typer <code>app</code> and registers the subcommand modules.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/enum.py">enum.py</a></strong>: Definess the <code>subx enum</code> command parameters (e.g., config file path, save option). Invokes <code>EnumService</code>.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/db.py">db.py</a></strong>: Implements the <code>subx db</code> commands. Coordinates options like custom query queries, deletes, date filters, and formats. Invokes <code>DbService</code>.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/probe.py">probe.py</a></strong>: Implements <code>subx http-probe</code>. Probes stored targets and displays summaries. Invokes <code>ProbeService</code>.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/migrate.py">migrate.py</a></strong>: Implements database migrations, triggering schema corrections with safety checks. Invokes <code>MigrateService</code>.</li>
+</ul>
+<h3 id="2-services-layer-coreservices">2. Services Layer (<code>core/services/</code>)</h3>
+<p>Contains the core business logic. Coordinates database writes, runs processes, handles errors, and returns clean Python objects.</p>
+<ul>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/services/enum_service.py">enum_service.py</a></strong>: Loads scope files, runs configured plugins in parallel, merges wildcards, filters out-of-scope targets, and persists findings using <code>StorageManager</code>.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/services/db_service.py">db_service.py</a></strong>: Exposes functions to select targets summaries, fetch subdomains by source/date, execute raw SQL queries, and purge tables safely.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/services/probe_service.py">probe_service.py</a></strong>: Coordinates external network probing. It queries database rows, runs <code>HttpxTool</code> via <code>ToolManager</code>, and loads updated status models.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/services/migrate_service.py">migrate_service.py</a></strong>: Coordinates DB validation, backup creation, and incremental columns updates.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/services/export_service.py">export_service.py</a></strong>: Universal I/O handlers. Parses formatting separators and writes domain lines to output files.</li>
+</ul>
+<h3 id="3-ui-layer-coreui">3. UI Layer (<code>core/ui/</code>)</h3>
+<p>Implements user-facing elements using <a href="https://rich.readthedocs.io/">Rich</a>.</p>
+<ul>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/ui/banner.py">banner.py</a></strong>: Contains <code>banner()</code>, which displays the ASCII branding.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/ui/console.py">console.py</a></strong>: Provides uniform colored indicators: <code>info</code> (blue), <code>success</code> (green), <code>warn</code> (yellow), and <code>error</code> (red, with program exit).</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/ui/renderers.py">renderers.py</a></strong>: Formats database dashboards, passive enumeration results, wildcard breakdowns, HTTP probe counts, and query grids into styled Rich tables and panels.</li>
+</ul>
+<h3 id="4-infrastructure-managers">4. Infrastructure &amp; Managers</h3>
+<p>Low-level components that communicate with the file system, network, or database.</p>
+<ul>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/config_manager.py">config_manager.py</a></strong>: Parses yaml configuration and reads <code>.env</code> variables.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/plugin_manager.py">plugin_manager.py</a></strong>: Discovers <code>Plugin</code> subclasses and runs their <code>run()</code> methods asynchronously.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/tool_manager.py">tool_manager.py</a></strong>: Fetches lists of stored hosts, runs a <code>Tool</code> subclass, and updates the database.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/storage_manager.py">storage_manager.py</a></strong>: Encapsulates SQLModel session management for SQLite.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/processor.py">processor.py</a></strong>: Classifies subdomains (wildcard, in-scope, out-of-scope).</li>
+</ul>
+<hr />
+<h2 id="data-models">Data Models</h2>
+<p>SubX uses two in-memory dataclasses to track scan results, and a SQLModel class for database storage.</p>
+<h3 id="pluginresult"><code>PluginResult</code></h3>
+<p><strong>File:</strong> <code>core/models.py</code>
+Represents the output of a single plugin run.
+* <code>plugin_name</code> (<code>str</code>): Class name of the plugin.
+* <code>subdomains</code> (<code>list[str]</code>): List of discovered domains.
+* <code>error</code> (<code>Exception | None</code>): Any error encountered during execution.
+* <code>finished_at</code> (<code>datetime</code>): UTC completion timestamp.</p>
+<h3 id="processedresult"><code>ProcessedResult</code></h3>
+<p><strong>File:</strong> <code>core/models.py</code>
+Consolidated and deduplicated outputs across all plugins.
+* <code>by_plugin</code> (<code>dict[str, list[str]]</code>): Subdomains mapped to their discovering plugin.
+* <code>wildcards</code> (<code>list[str]</code>): Discovered wildcard roots (without <code>*.</code>).
+* <code>out_of_scope</code> (<code>list[str]</code>): Subdomains filtered out of scope.
+* <code>all_subdomains</code> (<code>list[str]</code>): Flat, unique, sorted list of all in-scope subdomains.</p>
+<h3 id="subdomain-db-table"><code>Subdomain</code> (DB Table)</h3>
+<p><strong>File:</strong> <code>core/db_models.py</code>
+The SQLite database model definition.
+* <code>id</code> (<code>int</code> PK): Autoincrement primary key.
+* <code>target</code> (<code>str</code> Index): Root target domain (e.g. <code>example.com</code>).
+* <code>subdomain</code> (<code>str</code> Index): Discovered subdomain (e.g. <code>api.example.com</code>).
+* <code>source_plugin</code> (<code>str</code>): The plugin that discovered it.
+* <code>alive</code> (<code>bool | None</code>): HTTP liveness status.
+* <code>status_code</code> (<code>int | None</code>): HTTP response code.
+* <code>title</code> (<code>str | None</code>): HTTP HTML title.
+* <code>first_seen</code> (<code>datetime</code>): Discovery timestamp.
+* <code>last_seen</code> (<code>datetime</code>): Last scan confirmation timestamp.</p>
+<hr />
+<h2 id="how-to-write-a-plugin">How to Write a Plugin</h2>
+<p>SubX plugins are auto-discovered at runtime. To add a plugin:</p>
+<ol>
+<li>Create a new python file in <code>plugins/</code> (e.g., <code>plugins/my_source_enum.py</code>).</li>
+<li>Define a class inheriting from <code>core.plugin.Plugin</code>.</li>
+<li>Set your class name to end with <code>Plugin</code> (e.g., <code>MySourcePlugin</code>).</li>
+<li>Implement <code>async def run(self, domain: str) -&gt; list[str]</code>.</li>
+</ol>
+<h3 id="example-1-minimal-plugin-no-api-key-required">Example 1: Minimal Plugin (No API Key Required)</h3>
+<pre><code class="language-python">import aiohttp
+from core.plugin import Plugin
+
+class MySourcePlugin(Plugin):
+    &quot;&quot;&quot;Enumerate subdomains using MySource API (no authentication).&quot;&quot;&quot;
+
+    async def run(self, domain: str) -&gt; list[str]:
+        url = f&quot;https://api.mysource.com/subdomains?domain={domain}&quot;
+        subdomains = []
+
+        try:
+            # Always use aiohttp for async network I/O
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=15) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        subdomains = data.get(&quot;results&quot;, [])
+                    else:
+                        self.logger.warning(&quot;Received status code %d&quot;, resp.status)
+        except Exception as e:
+            self.logger.error(&quot;API request failed: %s&quot;, e)
+
+        return subdomains
+</code></pre>
+<h3 id="example-2-authenticated-plugin-api-key-required">Example 2: Authenticated Plugin (API Key Required)</h3>
+<p>If your plugin requires an API key, override the <code>required_keys</code> property to specify the configuration keys:</p>
+<pre><code class="language-python">import aiohttp
+from core.plugin import Plugin
+
+class SecuredServicePlugin(Plugin):
+    &quot;&quot;&quot;Enumerate subdomains using a secured API endpoint.&quot;&quot;&quot;
+
+    @property
+    def required_keys(self) -&gt; list[str]:
+        # These keys must match the entries under api_keys in config.yaml
+        return [&quot;SECURE_SERVICE_API_KEY&quot;]
+
+    async def run(self, domain: str) -&gt; list[str]:
+        api_key = self.config.get(&quot;SECURE_SERVICE_API_KEY&quot;)
+        headers = {&quot;Authorization&quot;: f&quot;Bearer {api_key}&quot;}
+        subdomains = []
+
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                url = f&quot;https://api.secure.io/v1/dns?target={domain}&quot;
+                async with session.get(url, timeout=20) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        subdomains = [item[&quot;host&quot;] for item in data.get(&quot;records&quot;, [])]
+        except Exception as e:
+            self.logger.error(&quot;Failed to query secure service: %s&quot;, e)
+
+        return subdomains
+</code></pre>
+<p>Then add your key to <code>config.yaml</code>:</p>
+<pre><code class="language-yaml">api_keys:
+  SECURE_SERVICE_API_KEY: &quot;your_api_token&quot;
+</code></pre>
+<hr />
+<h2 id="how-to-add-an-external-tool-wrapper">How to Add an External Tool (Wrapper)</h2>
+<p>External tools wrapper handle calls to command-line binaries (e.g. <code>httpx</code>, <code>naabu</code>, <code>nuclei</code>) by feeding them lists of targets and parsing their stdout.</p>
+<h3 id="1-create-the-tool-wrapper-class">1. Create the Tool Wrapper Class</h3>
+<p>Create a new file in <code>tools/</code> (e.g., <code>tools/portscanner.py</code>) inheriting from <code>core.tool.Tool</code>.</p>
+<pre><code class="language-python">import json
+from core.tool import Tool, ToolNotFoundError, ToolExecutionError
+
+class PortScanTool(Tool):
+    &quot;&quot;&quot;Wrapper for port scanning tool (e.g., naabu).&quot;&quot;&quot;
+
+    TOOL_NAME = &quot;naabu&quot;
+
+    async def run(self, targets: list[str], timeout: int = 300) -&gt; list[dict]:
+        if not targets:
+            return []
+
+        # Convert targets to a newline-separated string
+        input_data = &quot;\n&quot;.join(targets) + &quot;\n&quot;
+
+        # Execute using the self._execute helper (handles process creation, stdin, timeouts)
+        try:
+            stdout, stderr = await self._execute(
+                [&quot;-json&quot;, &quot;-silent&quot;],
+                input_data=input_data,
+                timeout=timeout
+            )
+        except ToolNotFoundError:
+            self.logger.error(&quot;Binary not found. Please install naabu.&quot;)
+            raise
+
+        # Parse standard output lines
+        results = []
+        for line in stdout.splitlines():
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+                # Ensure each parsed dict contains a &quot;subdomain&quot; key matching the target
+                results.append({
+                    &quot;subdomain&quot;: data.get(&quot;host&quot;),
+                    &quot;open_ports&quot;: data.get(&quot;ports&quot;, [])
+                })
+            except json.JSONDecodeError:
+                continue
+
+        return results
+</code></pre>
+<h3 id="2-configure-binary-path-resolution">2. Configure Binary Path Resolution</h3>
+<p>The <code>Tool</code> class handles paths differently based on the OS (implemented in <code>core/tool.py</code>):
+* <strong>Windows</strong>: Looks for a bundled executable at <code>bin/&lt;tool_name&gt;/&lt;tool_name&gt;.exe</code>.
+* <strong>Linux / macOS</strong>: Looks up the binary name in the system environment <code>PATH</code>.</p>
+<p>If you are bundling a Windows version of the scanner, create the corresponding subfolder and place the executable inside:</p>
+<pre><code>SubX/
+└── bin/
+    └── naabu/
+        └── naabu.exe
+</code></pre>
+<hr />
+<h2 id="database-schema-migrations">Database Schema &amp; Migrations</h2>
+<h3 id="current-schema">Current Schema</h3>
+<p>Defined in <code>core/db_models.py</code>.</p>
+<pre><code class="language-sql">CREATE TABLE subdomain (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    target        TEXT NOT NULL,
+    subdomain     TEXT NOT NULL,
+    source_plugin TEXT NOT NULL,
+    alive         BOOLEAN,
+    status_code   INTEGER,
+    title         TEXT,
+    first_seen    TIMESTAMP NOT NULL,
+    last_seen     TIMESTAMP NOT NULL
+);
+CREATE INDEX ix_subdomain_target ON subdomain (target);
+CREATE INDEX ix_subdomain_subdomain ON subdomain (subdomain);
+</code></pre>
+<h3 id="adding-new-fields-to-the-db-model">Adding New Fields to the DB Model</h3>
+<ol>
+<li>
+<p><strong>Modify the Class</strong>: Open <code>core/db_models.py</code> and add the new attribute as a nullable field:
+   <code>python
+   class Subdomain(SQLModel, table=True):
+       # ...
+       open_ports: str | None = Field(default=None)</code></p>
+</li>
+<li>
+<p><strong>Trigger the Migration</strong>: Run the migration command:
+   <code>bash
+   uv run python main.py dev-migrate</code>
+   This command creates a timestamped backup of your database (<code>subx.backup-&lt;timestamp&gt;.db</code>), inspects existing columns, and adds any missing columns using <code>ALTER TABLE</code>.</p>
+</li>
+</ol>
+<hr />
+<h2 id="testing-plugins-and-tools">Testing Plugins and Tools</h2>
+<p>Write a testing script inside <code>tests/</code> directory (e.g. <code>tests/test_my_plugin.py</code>). This allows testing changes without running the full CLI workflow.</p>
+<h3 id="testing-a-plugin">Testing a Plugin</h3>
+<pre><code class="language-python"># tests/test_my_plugin.py
+import asyncio
+from plugins.my_source_enum import MySourcePlugin
+
+async def test():
+    # Pass simulated configurations directly
+    plugin = MySourcePlugin({&quot;MY_API_KEY&quot;: &quot;dummy_value&quot;})
+    subdomains = await plugin.run(&quot;example.com&quot;)
+    print(f&quot;Discovered: {len(subdomains)} items&quot;)
+    for sub in subdomains[:10]:
+        print(f&quot; - {sub}&quot;)
+
+if __name__ == &quot;__main__&quot;:
+    asyncio.run(test())
+</code></pre>
+<h3 id="testing-a-tool">Testing a Tool</h3>
+<pre><code class="language-python"># tests/test_my_tool.py
+import asyncio
+from tools.httpx import HttpxTool
+
+async def test():
+    tool = HttpxTool()
+    results = await tool.run([&quot;google.com&quot;, &quot;github.com&quot;])
+    for r in results:
+        print(r)
+
+if __name__ == &quot;__main__&quot;:
+    asyncio.run(test())
+</code></pre>
+<hr />
+<h2 id="common-development-recipes">Common Development Recipes</h2>
+<h3 id="orchestrating-processes-via-services">Orchestrating Processes via Services</h3>
+<p>If you need to query database entries, execute migrations, or run scans from external code, use the <strong>service classes</strong> instead of calling the raw storage classes:</p>
+<pre><code class="language-python">import asyncio
+from core.services.db_service import DbService
+from core.services.probe_service import ProbeService
+
+async def script():
+    db = DbService()
+    probe = ProbeService()
+
+    # 1. Fetch domain statistics
+    summaries = await db.get_summary()
+    for summary in summaries:
+        print(f&quot;{summary['target']}: {summary['count']} subdomains&quot;)
+
+    # 2. Run liveness prober
+    print(&quot;Probing hackerone.com...&quot;)
+    raw_probe_outputs, updated_rows = await probe.probe_domain(&quot;hackerone.com&quot;)
+    print(f&quot;Probed {len(updated_rows)} domains.&quot;)
+
+if __name__ == &quot;__main__&quot;:
+    asyncio.run(script())
+</code></pre>
+</body>
+</html>
