@@ -1,10 +1,8 @@
 from datetime import datetime
-
 from core.db_models import Subdomain
-from core.storage_manager import StorageManager
+from core.services.base import Service
 
-
-class DbService:
+class DbService(Service):
     """Encapsulates all database query operations for the CLI."""
 
     async def get_summary(self) -> list[dict]:
@@ -18,7 +16,7 @@ class DbService:
         new_since: datetime | None = None,
     ) -> list[Subdomain]:
         """Fetch subdomains for a domain with optional filters."""
-        async def _query(storage: StorageManager) -> list[Subdomain]:
+        async def _query(storage) -> list[Subdomain]:
             if filter_plugin:
                 return await storage.get_by_plugin(domain, filter_plugin)
             elif new_since:
@@ -30,23 +28,14 @@ class DbService:
 
     async def delete_domain(self, domain: str) -> int:
         """Delete all records for a domain. Returns the number of rows deleted."""
-        async def _delete(storage: StorageManager) -> int:
+        async def _delete(storage) -> int:
             return await storage.delete(domain)
 
         return await self._with_storage(_delete)
 
     async def raw_query(self, query: str) -> list[dict]:
         """Run a raw SELECT query against the database."""
-        async def _raw(storage: StorageManager) -> list[dict]:
+        async def _raw(storage) -> list[dict]:
             return await storage.raw_query(query)
 
         return await self._with_storage(_raw)
-
-    async def _with_storage(self, fn):
-        """Open storage, run fn, close storage — guarantees cleanup."""
-        storage = StorageManager()
-        await storage.init()
-        try:
-            return await fn(storage)
-        finally:
-            await storage.close()

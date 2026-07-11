@@ -1,9 +1,7 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 
-
-def _utc_now() -> datetime:
-    return datetime.now(tz=timezone.utc)
+from core.db_models import _utc_now
 
 
 @dataclass
@@ -12,10 +10,6 @@ class PluginResult:
     subdomains: list[str] = field(default_factory=list)
     error: Exception | None = None
     finished_at: datetime = field(default_factory=_utc_now)
-
-    @property
-    def count(self) -> int:
-        return len(self.subdomains)
 
     @property
     def success(self) -> bool:

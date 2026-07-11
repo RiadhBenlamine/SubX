@@ -17,7 +17,6 @@ class ConfigManager:
         self.scope: list[str] = []
         self.out_of_scope: list[str] = []
         self.sources: Optional[list[str]] = None
-        self.verbose_level = None
 
         self._load_env()
         self._load_config_file()
@@ -52,7 +51,6 @@ class ConfigManager:
         self.scope = self._parse_list(data, "scope")
         self.out_of_scope = self._parse_list(data, "out_of_scope")
         self.sources = self._parse_list(data, "sources") or None
-        self.verbose_level = self._parse_list(data, "verbose_level") or None
 
         if not self.scope:
             raise ValueError(
@@ -86,6 +84,3 @@ class ConfigManager:
 
     def get_sources(self) -> Optional[list[str]]:
         return self.sources
-
-    def get_verbose_level(self) -> int:
-        return self.verbose_level

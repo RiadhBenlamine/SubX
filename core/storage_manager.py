@@ -45,48 +45,6 @@ class StorageManager:
     async def close(self) -> None:
         await self.engine.dispose()
 
-    async def update_httpx_results(
-        self, target: str, results: list[dict]
-    ) -> int:
-        """Persist httpx liveness-probe results onto existing Subdomain rows.
-
-        :param target: the scope these results belong to
-        :param results: list of dicts, each with at least "subdomain" plus
-            any of "alive", "status_code", "title"
-        :return: number of rows updated
-        """
-        self._ensure_initialized()
-        if not results:
-            return 0
-
-        updated = 0
-        chunk_size = 450
-        async with self._session() as session:
-            async with session.begin():
-                for i in range(0, len(results), chunk_size):
-                    batch = results[i : i + chunk_size]
-                    for row in batch:
-                        sub = row.get("subdomain")
-                        if not sub:
-                            continue
-                        values = {
-                            k: row[k]
-                            for k in ("alive", "status_code", "title")
-                            if k in row
-                        }
-                        if not values:
-                            continue
-                        result = await session.execute(
-                            update(Subdomain)
-                            .where(
-                                Subdomain.target == target,
-                                Subdomain.subdomain == sub,
-                            )
-                            .values(**values)
-                        )
-                        updated += result.rowcount
-        return updated
-
     async def update_results(
         self, target: str, results: list[dict]
     ) -> int:
@@ -295,20 +253,23 @@ class StorageManager:
 
     async def raw_query(self, query: str) -> list[dict]:
         self._ensure_initialized()
-        if not query.strip().upper().startswith("SELECT"):
+        q = query.strip()
+        if not q.upper().startswith("SELECT"):
             raise ValueError("raw_query() only accepts SELECT statements.")
 
+        if ";" in q:
+            raise ValueError("Semicolons are not allowed in custom queries.")
+
+        forbidden = {"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "REPLACE", "REINDEX", "ATTACH", "DETACH"}
+        # Split by spaces and non-alphanumeric chars to isolate SQL words
+        import re
+        words = {w.upper() for w in re.findall(r"\b\w+\b", q)}
+        if forbidden.intersection(words):
+            raise ValueError("Only read-only SELECT queries are allowed.")
+
         async with self._session() as session:
-            result = await session.execute(text(query))
+            result = await session.execute(text(q))
             return [dict(row) for row in result.mappings().all()]
-
-    async def export(self, target: str, output_path: str) -> int:
-        rows = await self.get_all(target)
-        out = Path(output_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text("\n".join(row.subdomain for row in rows) + "\n")
-        return len(rows)
-
     def _session(self) -> AsyncSession:
         return self._session_factory()
 

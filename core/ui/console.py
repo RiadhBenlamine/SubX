@@ -1,9 +1,11 @@
+from typing import NoReturn
+
 import typer
 from rich import box
 from rich.console import Console
 from rich.table import Table
 
-console = Console()
+console = Console(force_terminal=True)
 
 
 def info(msg: str) -> None:
@@ -18,7 +20,7 @@ def warn(msg: str) -> None:
     console.print(f"[bold yellow]  ⚡[/bold yellow]  {msg}")
 
 
-def error(msg: str) -> None:
+def error(msg: str) -> NoReturn:
     console.print(f"[bold red]  ✘[/bold red]  {msg}")
     raise typer.Exit(1)
 

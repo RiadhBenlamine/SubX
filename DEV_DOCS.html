@@ -139,6 +139,11 @@ Updated to reflect the clean, service-oriented layered architecture.</p>
 * <strong>CLI commands (<code>core/cmd/*</code>)</strong> can import from <strong>Services</strong> (<code>core/services/*</code>) and <strong>UI</strong> (<code>core/ui/*</code>). They must <strong>never</strong> instantiate or directly call infrastructure managers (like <code>StorageManager</code> or <code>PluginManager</code>).
 * <strong>Services (<code>core/services/*</code>)</strong> own the business logic and coordinate the infrastructure components. They can import from <code>core/storage_manager.py</code>, <code>core/plugin_manager.py</code>, etc. They must <strong>never</strong> import from UI or CLI layers.
 * <strong>UI (<code>core/ui/*</code>)</strong> is pure rendering and layout logic. It can import from <code>core/models.py</code> for type definitions. It must <strong>never</strong> import from CLI, Services, or perform I/O / DB queries.</p>
+<h3 id="optimization--dependency-rules">Optimization &amp; Dependency Rules</h3>
+<p>To keep the framework lightweight, modular, and optimized:
+* <strong>Prefer Async Network Clients (<code>aiohttp</code>)</strong>: Do not use synchronous HTTP libraries (like <code>requests</code> or client SDKs built on top of them) in new plugins. All passive query engines must perform network queries asynchronously.
+* <strong>Keep Dependencies Minimal</strong>: Do not introduce heavy third-party packages (e.g., visualization libraries like <code>networkx</code>, <code>pyvis</code>, or parser packages like <code>feedparser</code>) unless they are core to the reconnaissance pipeline.
+* <strong>Keep Wrappers Pure</strong>: Tool wrappers in <code>tools/</code> must only handle subprocess execution, input data streaming, and output parsing. They must not carry database logic.</p>
 <hr />
 <h2 id="project-directory-structure">Project Directory Structure</h2>
 <pre><code>SubX/
@@ -150,6 +155,7 @@ Updated to reflect the clean, service-oriented layered architecture.</p>
 ├── core/                          # Framework Core
 │   ├── cmd/                       # CLI Command definitions (Typer routes)
 │   │   ├── __init__.py            # Typer app initialization and registration
+│   │   ├── base.py                # Abstract base class Command for CLI subcommands
 │   │   ├── enum.py                # &quot;subx enum&quot; route
 │   │   ├── db.py                  # &quot;subx db&quot; route
 │   │   ├── probe.py               # &quot;subx http-probe&quot; route
@@ -193,11 +199,12 @@ Updated to reflect the clean, service-oriented layered architecture.</p>
 <p>Handles parsing command-line parameters, managing flags, and triggering high-level processes. It passes structured results to the UI layer.</p>
 <ul>
 <li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/main.py">main.py</a></strong>: Thin bootstrapper. It imports the Typer app from <code>core/cmd/__init__.py</code> and executes it.</li>
-<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/__init__.py"><strong>init</strong>.py</a></strong>: Instantiates the Typer <code>app</code> and registers the subcommand modules.</li>
-<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/enum.py">enum.py</a></strong>: Definess the <code>subx enum</code> command parameters (e.g., config file path, save option). Invokes <code>EnumService</code>.</li>
-<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/db.py">db.py</a></strong>: Implements the <code>subx db</code> commands. Coordinates options like custom query queries, deletes, date filters, and formats. Invokes <code>DbService</code>.</li>
-<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/probe.py">probe.py</a></strong>: Implements <code>subx http-probe</code>. Probes stored targets and displays summaries. Invokes <code>ProbeService</code>.</li>
-<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/migrate.py">migrate.py</a></strong>: Implements database migrations, triggering schema corrections with safety checks. Invokes <code>MigrateService</code>.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/__init__.py"><strong>init</strong>.py</a></strong>: Instantiates the Typer <code>app</code> and registers the subcommand class instances.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/base.py">base.py</a></strong>: Defines the <code>Command</code> abstract base class with common command properties, generic registration, and setup helpers.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/enum.py">enum.py</a></strong>: Defines the <code>EnumCommand</code> class wrapping subdomain enumeration. Invokes <code>EnumService</code>.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/db.py">db.py</a></strong>: Defines the <code>DbCommand</code> class wrapping database summary, queries, and deletion. Invokes <code>DbService</code>.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/probe.py">probe.py</a></strong>: Defines the <code>ProbeCommand</code> class wrapping HTTP status and title probing. Invokes <code>ProbeService</code>.</li>
+<li><strong><a href="file:///c:/Users/DELL/PycharmProjects/SubX/core/cmd/migrate.py">migrate.py</a></strong>: Defines the <code>MigrateCommand</code> class wrapping SQLite schema migrations. Invokes <code>MigrateService</code>.</li>
 </ul>
 <h3 id="2-services-layer-coreservices">2. Services Layer (<code>core/services/</code>)</h3>
 <p>Contains the core business logic. Coordinates database writes, runs processes, handles errors, and returns clean Python objects.</p>

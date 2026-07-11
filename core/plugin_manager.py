@@ -112,8 +112,6 @@ class PluginManager:
     def _missing_keys(self, plugin: Plugin) -> list[str]:
         try:
             keys = plugin.required_keys
-            if callable(keys):
-                keys = keys()
         except Exception as e:
             logger.warning("Could not read required_keys from %s: %s", plugin.__class__.__name__, e)
             return []

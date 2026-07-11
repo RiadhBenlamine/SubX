@@ -5,8 +5,7 @@ from core.config_manager import ConfigManager
 from core.models import ProcessedResult
 from core.plugin_manager import PluginManager
 from core.processor import Processor
-from core.storage_manager import StorageManager
-
+from core.services.base import Service
 
 @dataclass
 class EnumResult:
@@ -18,7 +17,7 @@ class EnumResult:
     processed_by_target: dict[str, dict] = field(default_factory=dict)
 
 
-class EnumService:
+class EnumService(Service):
     """Orchestrates subdomain enumeration: config → plugins → process → store."""
 
     async def run(self, config_path: str, save: bool) -> EnumResult:
@@ -42,7 +41,7 @@ class EnumService:
 
         storage = None
         if save:
-            storage = StorageManager()
+            storage = self.storage
             await storage.init()
 
         try:
@@ -59,8 +58,7 @@ class EnumService:
                     "new_count": new_count,
                 }
         finally:
-            if storage:
-                await storage.close()
+            pass  # Don't dispose — singleton is reused
 
         return result
 

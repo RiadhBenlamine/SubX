@@ -1,8 +1,10 @@
 import typer
 
-from core.cmd import db, enum, migrate, probe
-
-HELP_NAMES = {"help_option_names": ["-h", "--help"]}
+from core.cmd.base import HELP_NAMES
+from core.cmd.db import DbCommand
+from core.cmd.enum import EnumCommand
+from core.cmd.migrate import MigrateCommand
+from core.cmd.probe import ProbeCommand
 
 app = typer.Typer(
     name="subx",
@@ -13,7 +15,7 @@ app = typer.Typer(
 )
 
 # Register all subcommands
-enum.register(app)
-db.register(app)
-probe.register(app)
-migrate.register(app)
+EnumCommand().register(app)
+DbCommand().register(app)
+ProbeCommand().register(app)
+MigrateCommand().register(app)

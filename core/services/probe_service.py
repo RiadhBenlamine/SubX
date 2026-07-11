@@ -1,10 +1,9 @@
 from core.db_models import Subdomain
-from core.storage_manager import StorageManager
 from core.tool_manager import ToolManager
 from tools.httpx import HttpxTool
+from core.services.base import Service
 
-
-class ProbeService:
+class ProbeService(Service):
     """Orchestrates HTTP liveness probing: run httpx → persist → return rows."""
 
     async def probe_domain(self, domain: str) -> tuple[list[dict], list[Subdomain]]:
@@ -20,12 +19,5 @@ class ProbeService:
         if not results:
             return [], []
 
-        # ToolManager already persisted the results, read back the updated rows
-        storage = StorageManager()
-        await storage.init()
-        try:
-            rows = await storage.get_all(domain)
-        finally:
-            await storage.close()
-
+        rows = await self._with_storage(lambda storage: storage.get_all(domain))
         return results, rows

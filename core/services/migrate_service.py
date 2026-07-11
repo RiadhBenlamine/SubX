@@ -1,14 +1,8 @@
-from core.storage_manager import StorageManager
+from core.services.base import Service
 
-
-class MigrateService:
+class MigrateService(Service):
     """Handles database schema migrations."""
 
     async def migrate(self, backup: bool = True) -> list[str]:
         """Run the migration and return a list of added column names."""
-        storage = StorageManager()
-        await storage.init()
-        try:
-            return await storage.migrate(backup=backup)
-        finally:
-            await storage.close()
+        return await self._with_storage(lambda storage: storage.migrate(backup=backup))

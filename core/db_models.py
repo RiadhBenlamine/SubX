@@ -17,12 +17,3 @@ class Subdomain(SQLModel, table=True):
     title: str | None = Field(default=None)
     first_seen: datetime = Field(default_factory=_utc_now)
     last_seen: datetime = Field(default_factory=_utc_now)
-
-#class Webservers(SQLModel, table=True):
-#    id: int = Field(default=None, primary_key=True)
-#    subdomain: str = ForeignKey('Subdomain', table=False)
-#    status_code: int = Field(default=None)
-#    title : str = Field(default=None)
-#    tech : list[str] = Field(default=None)
-#    a_record : list[str] = Field(default=None)
-
