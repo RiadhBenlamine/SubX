@@ -1,9 +1,12 @@
+"""ViewDNS subdomain enumeration plugin."""
 import aiohttp
 
+from core.errors import PluginRateLimitError, PluginUnavailableError
 from core.plugin import Plugin
 
 
 class ViewDnsPlugin(Plugin):
+    """Enumerates subdomains via ViewDNS API."""
 
     @property
     def required_keys(self) -> list[str]:
@@ -13,7 +16,7 @@ class ViewDnsPlugin(Plugin):
         subdomains = []
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with self.session() as session:
                 first_page = await self._fetch_page(session, domain, page=1)
                 if not first_page:
                     return []
@@ -26,14 +29,16 @@ class ViewDnsPlugin(Plugin):
                     if data:
                         subdomains.extend(self._extract(data))
 
-        except aiohttp.ClientError as e:
-            self.logger.error("Request error: %s", e)
+        except (PluginRateLimitError, PluginUnavailableError) as e:
+            if isinstance(e, PluginRateLimitError):
+                raise PluginRateLimitError(str(e), subdomains) from e
+            raise
 
         return subdomains
 
     async def _fetch_page(
         self,
-        session: aiohttp.ClientSession,
+        session,
         domain: str,
         page: int,
     ) -> dict | None:
@@ -44,18 +49,8 @@ class ViewDnsPlugin(Plugin):
             f"&output=json"
             f"&page={page}"
         )
-        try:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                if resp.status == 200:
-                    return await resp.json()
-                if resp.status == 429:
-                    self.logger.warning("API credit is over (HTTP 429).")
-                    return None
-                self.logger.error("HTTP %d on page %d", resp.status, page)
-                return None
-        except aiohttp.ClientError as e:
-            self.logger.error("Failed to fetch page %d: %s", page, e)
-            return None
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            return await resp.json()
 
     def _extract(self, json_data: dict) -> list[str]:
         """Pull subdomain names out of a response dict."""

@@ -1,8 +1,11 @@
-from abc import ABC, abstractmethod
+"""Base CLI command classes and configurations."""
 import asyncio
+from abc import ABC, abstractmethod
+
 import typer
-from core.ui.banner import banner
+
 from core.logger import setup_logger
+from core.ui.banner import banner
 
 HELP_NAMES = {"help_option_names": ["-h", "--help"]}
 
@@ -24,16 +27,18 @@ class Command(ABC):
     @abstractmethod
     def callback(self, *args, **kwargs) -> None:
         """The command callback containing typer.Option declarations."""
-        ...
 
     @staticmethod
     def show_banner() -> None:
+        """Display the SUBX CLI banner."""
         banner()
 
     @staticmethod
     def setup_logging() -> None:
+        """Initialize the root application logger."""
         setup_logger()
 
     @staticmethod
     def run_async(coro) -> None:
+        """Run an asynchronous coroutine inside a synchronous context."""
         asyncio.run(coro)

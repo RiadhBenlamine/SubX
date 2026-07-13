@@ -1,7 +1,9 @@
+"""Service layer for probing subdomains (HTTP/liveness)."""
 from core.db_models import Subdomain
+from core.services.base import Service
 from core.tool_manager import ToolManager
 from tools.httpx import HttpxTool
-from core.services.base import Service
+
 
 class ProbeService(Service):
     """Orchestrates HTTP liveness probing: run httpx → persist → return rows."""

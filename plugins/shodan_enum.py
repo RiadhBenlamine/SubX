@@ -1,12 +1,16 @@
+"""Shodan search subdomain enumeration plugin."""
 import asyncio
 
 from shodan import Shodan
 from shodan.exception import APIError as ShodanAPIError
 
+from core.errors import (PluginAuthError, PluginRateLimitError,
+                         PluginUnavailableError)
 from core.plugin import Plugin
 
 
 class ShodanPlugin(Plugin):
+    """Enumerates subdomains via Shodan search API."""
 
     def __init__(self, config: dict):
         super().__init__(config)
@@ -16,19 +20,42 @@ class ShodanPlugin(Plugin):
     def required_keys(self) -> list[str]:
         return ["SHODAN_API"]
 
-    async def run(self, domain: str):
+    async def _search_shodan(self, api, query, page=1):
+        if self.rate_limiter:
+            await self.rate_limiter.acquire()
+        try:
+            return await asyncio.to_thread(api.search, query, page=page)
+        except ShodanAPIError as e:
+            err_str = str(e).lower()
+            if "invalid api key" in err_str or "unauthorized" in err_str or "403" in err_str:
+                raise PluginAuthError(f"Shodan auth failure: {e}") from e
+            if self._is_quota_error(e) or "429" in err_str:
+                raise PluginRateLimitError(f"Shodan rate limit/quota: {e}") from e
+            raise PluginUnavailableError(f"Shodan API error: {e}") from e
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            raise PluginUnavailableError(f"Shodan connection error: {e}") from e
+
+    async def run(self, domain: str):  # pylint: disable=too-many-locals
         try:
             api = Shodan(self.config["SHODAN_API"])
-        except Exception as e:
-            self.logger.error("Failed to initialize API client: %s", e)
-            return []
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            raise PluginAuthError(f"Failed to initialize Shodan API client: {e}") from e
 
-        is_member = await self._check_membership(api)
+        try:
+            is_member = await self._check_membership(api)
+        except ShodanAPIError as e:
+            err_str = str(e).lower()
+            if "invalid api key" in err_str or "unauthorized" in err_str or "403" in err_str:
+                raise PluginAuthError(f"Shodan auth failure: {e}") from e
+            raise PluginUnavailableError(f"Shodan API error checking membership: {e}") from e
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            raise PluginUnavailableError(f"Shodan error checking membership: {e}") from e
+
         page_cap = None if is_member else 10
         self.logger.info(
             "Plan: %s | page cap: %s",
             "member" if is_member else "free",
-            page_cap or "unlimited"
+            page_cap or "unlimited",
         )
 
         subdomains = set()
@@ -44,7 +71,7 @@ class ShodanPlugin(Plugin):
                 continue
 
             try:
-                results = await asyncio.to_thread(api.search, query, page=1)
+                results = await self._search_shodan(api, query, page=1)
                 total = results.get("total", 0)
 
                 if total == 0:
@@ -61,36 +88,17 @@ class ShodanPlugin(Plugin):
 
                 for page in range(2, pages + 1):
                     try:
-                        page_results = await asyncio.to_thread(api.search, query, page=page)
+                        page_results = await self._search_shodan(api, query, page=page)
                         self._extract(page_results, domain, subdomains)
                         self.logger.info(
                             "'%s' page %d/%d — %d unique subdomains so far",
-                            query, page, pages, len(subdomains)
+                            query, page, pages, len(subdomains),
                         )
-                    except ShodanAPIError as e:
-                        if self._is_quota_error(e):
-                            self.logger.warning(
-                                "Quota exceeded on page %d of '%s', "
-                                "returning %d subdomains collected so far.",
-                                page, query, len(subdomains),
-                            )
-                            return list(subdomains)
-                        self.logger.error("API error on page %d of '%s': %s", page, query, e)
-                        break
+                    except PluginRateLimitError as e:
+                        raise PluginRateLimitError(str(e), list(subdomains)) from e
 
-            except ShodanAPIError as e:
-                if self._is_quota_error(e):
-                    self.logger.warning(
-                        "Quota exceeded on query '%s', "
-                        "returning %d subdomains collected so far.",
-                        query, len(subdomains),
-                    )
-                    return list(subdomains)
-                self.logger.error("Query '%s' failed: %s", query, e)
-                continue
-            except Exception as e:
-                self.logger.error("Unexpected error on query '%s': %s", query, e)
-                continue
+            except PluginRateLimitError as e:
+                raise PluginRateLimitError(str(e), list(subdomains)) from e
 
         self.logger.info("Total unique subdomains: %d", len(subdomains))
         return list(subdomains)
@@ -105,11 +113,13 @@ class ShodanPlugin(Plugin):
         if self._is_member is not None:
             return self._is_member
 
+        if self.rate_limiter:
+            await self.rate_limiter.acquire()
         try:
             info = await asyncio.to_thread(api.info)
             plan = info.get("plan", "")
             self._is_member = plan not in ("dev", "free", "")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             self.logger.warning("Could not fetch account info, assuming free: %s", e)
             self._is_member = False
 

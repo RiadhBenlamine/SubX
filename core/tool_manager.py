@@ -1,7 +1,7 @@
+"""Orchestrator for managing and executing pure external command-line tool wrappers."""
 from core.logger import logger
 from core.services.base import _get_storage
-from core.tool import (Tool, ToolExecutionError, ToolNotFoundError,
-                       ToolTimeoutError)
+from core.tool import Tool
 
 
 class ToolManager:
@@ -28,13 +28,14 @@ class ToolManager:
 
         hosts = await self._fetch_hosts(storage, target)
         if not hosts:
-            logger.warning(f"[{tool.TOOL_NAME}] no subdomains stored for {target}")
+            logger.warning(
+                "[%s] no subdomains stored for %s",
+                tool.TOOL_NAME,
+                target,
+            )
             return []
 
-        try:
-            results = await tool.run(hosts, **kwargs)
-        except (ToolNotFoundError, ToolTimeoutError, ToolExecutionError):
-            raise
+        results = await tool.run(hosts, **kwargs)
 
         if results:
             await storage.update_results(target, results)
@@ -44,4 +45,4 @@ class ToolManager:
     @staticmethod
     async def _fetch_hosts(storage, target: str) -> list[str]:
         rows = await storage.get_all(target)
-        return [row.subdomain for row in rows]
+        return [row.subdomain for row in rows]

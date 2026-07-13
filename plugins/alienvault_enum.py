@@ -1,5 +1,7 @@
+"""AlienVault passive DNS subdomain enumeration plugin."""
 import aiohttp
 
+from core.errors import PluginUnavailableError
 from core.plugin import Plugin
 
 _URL = "https://otx.alienvault.com/api/v1/indicators/domain/{domain}/passive_dns"
@@ -20,21 +22,14 @@ class AlienVaultPlugin(Plugin):
         }
 
         try:
-            async with aiohttp.ClientSession(headers=headers, timeout=_TIMEOUT) as session:
+            async with self.session(headers=headers, timeout=_TIMEOUT) as session:
                 async with session.get(_URL.format(domain=domain)) as resp:
-                    if resp.status == 403:
-                        self.logger.error("Invalid or unauthorized API key.")
-                        return []
-                    if resp.status == 404:
-                        self.logger.warning("Domain '%s' not found in OTX.", domain)
-                        return []
-                    if resp.status != 200:
-                        self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
-                        return []
                     data = await resp.json()
-        except (aiohttp.ClientError, TimeoutError) as e:
-            self.logger.error("Request failed for '%s': %s", domain, e)
-            return []
+        except PluginUnavailableError as e:
+            if "HTTP 404" in str(e):
+                self.logger.warning("Domain '%s' not found in OTX.", domain)
+                return []
+            raise
 
         subdomains = {
             record["hostname"].strip().lower()

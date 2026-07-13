@@ -1,3 +1,4 @@
+"""Service layer orchestrating domain subdomain passive enumeration."""
 import asyncio
 from dataclasses import dataclass, field
 
@@ -6,6 +7,7 @@ from core.models import ProcessedResult
 from core.plugin_manager import PluginManager
 from core.processor import Processor
 from core.services.base import Service
+
 
 @dataclass
 class EnumResult:
@@ -21,6 +23,7 @@ class EnumService(Service):
     """Orchestrates subdomain enumeration: config → plugins → process → store."""
 
     async def run(self, config_path: str, save: bool) -> EnumResult:
+        """Parse configuration, launch discovery plugins, collect and persist results."""
         config = self._load_config(config_path)
         scope = config.get_scope()
 

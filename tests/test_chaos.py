@@ -11,4 +11,5 @@ async def main():
     for sub in results:
         print(sub)
 
-asyncio.run(main())
+if __name__ == '__main__':
+    asyncio.run(main())

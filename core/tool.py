@@ -1,3 +1,4 @@
+"""Abstract base class and error types for external binary tool wrappers."""
 import asyncio
 import shutil
 import sys
@@ -104,12 +105,12 @@ class Tool(ABC):
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 process.communicate(input=stdin_bytes), timeout=timeout
             )
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as e:
             process.kill()
             await process.wait()
             raise ToolTimeoutError(
                 f"{self.TOOL_NAME} did not finish within {timeout}s"
-            )
+            ) from e
 
         stdout = stdout_bytes.decode(errors="replace")
         stderr = stderr_bytes.decode(errors="replace")
@@ -133,4 +134,3 @@ class Tool(ABC):
         Tools are pure: no storage, no I/O beyond running the binary. Fetching
         input and persisting output is ToolManager's job, not the tool's.
         """
-        ...

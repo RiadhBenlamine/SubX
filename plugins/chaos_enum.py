@@ -1,9 +1,13 @@
+"""Chaos subdomain enumeration plugin."""
 import aiohttp
 
+from core.errors import PluginUnavailableError
 from core.plugin import Plugin
 
 
 class ChaosPlugin(Plugin):
+    """Enumerates subdomains via ProjectDiscovery Chaos API."""
+
     BASE_URL = "https://dns.projectdiscovery.io/dns"
 
     @property
@@ -11,28 +15,21 @@ class ChaosPlugin(Plugin):
         return ["CHAOS_API"]
 
     async def run(self, domain: str) -> list[str]:
-        url     = f"{self.BASE_URL}/{domain}/subdomains"
+        url = f"{self.BASE_URL}/{domain}/subdomains"
         headers = {"Authorization": self.config.get("CHAOS_API")}
 
         try:
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                    if resp.status == 401:
-                        self.logger.error("Invalid API key.")
-                        return []
-                    if resp.status == 404:
-                        self.logger.warning("Domain %s not found in Chaos DB.", domain)
-                        return []
-                    if resp.status != 200:
-                        self.logger.error("HTTP %d for %s", resp.status, domain)
-                        return []
-
+            async with self.session(
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as session:
+                async with session.get(url) as resp:
                     data = await resp.json()
-                    raw  = data.get("subdomains") or []
+                    raw = data.get("subdomains") or []
                     root = data.get("domain", domain)
-
                     return [f"{sub}.{root}" for sub in raw if sub]
-
-        except aiohttp.ClientError as e:
-            self.logger.error("Request error: %s", e)
-            return []
+        except PluginUnavailableError as e:
+            if "HTTP 404" in str(e):
+                self.logger.warning("Domain %s not found in Chaos DB.", domain)
+                return []
+            raise

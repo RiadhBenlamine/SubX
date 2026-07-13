@@ -1,3 +1,4 @@
+"""CLI command module and registering app commands."""
 import typer
 
 from core.cmd.base import HELP_NAMES

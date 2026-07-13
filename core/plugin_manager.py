@@ -1,9 +1,12 @@
+"""Plugin manager for discovering, loading, and executing subdomain discovery plugins."""
 import asyncio
 import importlib
 import inspect
 import logging
 import pathlib
 
+from core.errors import (PluginAuthError, PluginRateLimitError,
+                         PluginUnavailableError)
 from core.models import PluginResult
 from core.plugin import Plugin
 
@@ -11,12 +14,15 @@ logger = logging.getLogger("PluginManager")
 
 
 class PluginManager:
+    """Manages the discovery, initialization, and concurrent execution of passive recon plugins."""
+
     def __init__(self, config: dict):
         self.config = config
         self.plugins_path = pathlib.Path(__file__).parent.parent / "plugins"
         self.loaded_plugins: list[Plugin] = []
 
     def load_plugins(self, allowed: list[str] | None = None) -> None:
+        """Scan the plugins directory and load configured/authorized plugin classes."""
         if self.loaded_plugins:
             return
 
@@ -47,6 +53,7 @@ class PluginManager:
         )
 
     async def execute_plugins(self, target: str) -> list[PluginResult]:
+        """Execute all loaded plugins concurrently against a target domain."""
         if not self.loaded_plugins:
             logger.warning("No plugins loaded. Call load_plugins() first.")
             return []
@@ -62,12 +69,31 @@ class PluginManager:
         for name, outcome in zip(names, outcomes):
             if isinstance(outcome, Exception):
                 logger.error("[%s] failed: %s", name, outcome)
-                results.append(PluginResult(plugin_name=name, error=outcome))
+                status = "unavailable"
+                subdomains = []
+                if isinstance(outcome, PluginAuthError):
+                    status = "auth_error"
+                elif isinstance(outcome, PluginRateLimitError):
+                    status = "partial"
+                    subdomains = getattr(outcome, "partial_subdomains", [])
+                elif isinstance(outcome, PluginUnavailableError):
+                    status = "unavailable"
+                results.append(
+                    PluginResult(
+                        plugin_name=name,
+                        subdomains=subdomains,
+                        error=outcome,
+                        status=status,
+                    )
+                )
             else:
-                results.append(PluginResult(
-                    plugin_name=name,
-                    subdomains=outcome if isinstance(outcome, list) else [],
-                ))
+                results.append(
+                    PluginResult(
+                        plugin_name=name,
+                        subdomains=outcome if isinstance(outcome, list) else [],
+                        status="ok",
+                    )
+                )
         return results
 
     def _discover_modules(self) -> list[pathlib.Path]:
@@ -80,7 +106,7 @@ class PluginManager:
         module_name = f"plugins.{path.stem}"
         try:
             return importlib.import_module(module_name)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to import '%s': %s", module_name, e)
             return None
 
@@ -95,24 +121,24 @@ class PluginManager:
         return plugins
 
     @staticmethod
-    def _is_valid_plugin(cls, module) -> bool:
+    def _is_valid_plugin(plugin_cls, module) -> bool:
         return (
-            issubclass(cls, Plugin)
-            and cls is not Plugin
-            and cls.__module__ == module.__name__
+            issubclass(plugin_cls, Plugin)
+            and plugin_cls is not Plugin
+            and plugin_cls.__module__ == module.__name__
         )
 
     def _instantiate(self, cls) -> Plugin | None:
         try:
             return cls(self.config)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to instantiate '%s': %s", cls.__name__, e)
             return None
 
     def _missing_keys(self, plugin: Plugin) -> list[str]:
         try:
             keys = plugin.required_keys
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.warning("Could not read required_keys from %s: %s", plugin.__class__.__name__, e)
             return []
         return [k for k in keys if self.config.get(k) in (None, "")]

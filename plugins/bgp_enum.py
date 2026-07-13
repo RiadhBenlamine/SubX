@@ -1,5 +1,4 @@
-import asyncio
-
+"""BGP certificate search subdomain enumeration plugin."""
 import aiohttp
 
 from core.plugin import Plugin
@@ -22,26 +21,12 @@ class BgpPlugin(Plugin):
             ),
         }
 
-        await asyncio.sleep(1)
         subdomains = []
-
-        for attempt in range(1, _MAX_RETRIES + 1):
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url, headers=headers, timeout=_TIMEOUT) as resp:
-                        if resp.status != 200:
-                            self.logger.warning("HTTP %d for '%s'.", resp.status, domain)
-                            return subdomains
-                        data = await resp.json()
-                        for entry in data.get("domains", []):
-                            if name := entry.get("domain"):
-                                subdomains.append(name)
-                        self.logger.info("Found %d subdomains for '%s'.", len(subdomains), domain)
-                        return subdomains
-            except (aiohttp.ClientError, TimeoutError) as e:
-                self.logger.warning(
-                    "Attempt %d/%d failed for '%s': %s", attempt, _MAX_RETRIES, domain, e
-                )
-                await asyncio.sleep(2 ** (attempt - 1))
-
+        async with self.session(timeout=_TIMEOUT) as session:
+            async with session.get(url, headers=headers) as resp:
+                data = await resp.json()
+                for entry in data.get("domains", []):
+                    if name := entry.get("domain"):
+                        subdomains.append(name)
+        self.logger.info("Found %d subdomains for '%s'.", len(subdomains), domain)
         return subdomains

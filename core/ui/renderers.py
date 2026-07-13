@@ -1,3 +1,4 @@
+"""Presentation layer renderers for database summaries, subdomain tables, and scan details."""
 from rich import box
 from rich.panel import Panel
 from rich.table import Table
@@ -7,6 +8,7 @@ from core.ui.console import console, make_table
 
 
 def render_db_summary(summaries: list[dict]) -> None:
+    """Render a table displaying a summary of target domains in the database."""
     table = make_table(
         ("TARGET DOMAIN", {"style": "white",    "no_wrap": True}),
         ("SUBDOMAINS",    {"style": "green",     "justify": "right"}),
@@ -23,7 +25,8 @@ def render_db_summary(summaries: list[dict]) -> None:
     console.print(f"\n[dim]  {len(summaries)} target(s) tracked.[/dim]\n")
 
 
-def render_db_rows(rows: list, domain: str) -> None:
+def render_db_rows(rows: list) -> None:
+    """Render a table of query results showing subdomain sources and timelines."""
     table = make_table(
         ("SUBDOMAIN",  {"style": "white",     "no_wrap": True}),
         ("SOURCE",     {"style": "dim cyan",  "justify": "center"}),
@@ -31,16 +34,22 @@ def render_db_rows(rows: list, domain: str) -> None:
         ("LAST SEEN",  {"style": "dim white", "justify": "right", "no_wrap": True}),
     )
     for row in rows:
+        sources_str = (
+            ", ".join(s.source_plugin for s in row.sources)
+            if getattr(row, "sources", None)
+            else row.source_plugin
+        )
         table.add_row(
             row.subdomain,
-            row.source_plugin,
+            sources_str,
             row.first_seen.strftime("%Y-%m-%d %H:%M"),
             row.last_seen.strftime("%Y-%m-%d %H:%M"),
         )
     console.print(table)
 
 
-def render_db_rows_web(rows: list, domain: str) -> None:
+def render_db_rows_web(rows: list) -> None:
+    """Render a table showing web status information (liveness, HTTP status, page title)."""
     table = make_table(
         ("SUBDOMAIN", {"style": "white"}),
         ("ALIVE",     {"style": "white",     "justify": "center"}),
@@ -66,6 +75,7 @@ def render_db_rows_web(rows: list, domain: str) -> None:
 
 
 def render_raw_rows(rows: list[dict]) -> None:
+    """Render raw query results as a table."""
     if not rows:
         console.print("[dim]  No results.[/dim]\n")
         return
@@ -84,6 +94,7 @@ def render_enum_results(
     processed_by_target: dict[str, dict],
     save: bool,
 ) -> None:
+    """Render subdomain enumeration scan results and summary statistics."""
     for target, data in processed_by_target.items():
         processed: ProcessedResult = data["processed"]
         new_count: int = data["new_count"]
@@ -104,8 +115,19 @@ def render_enum_results(
         summary.add_column(style="dim white")
         summary.add_column(style="bold white")
 
-        for plugin_name, subs in processed.by_plugin.items():
-            summary.add_row(f"[{plugin_name}]", str(len(subs)))
+        statuses = getattr(processed, "plugin_statuses", {}) or {}
+        for plugin_name in sorted(statuses.keys()):
+            status = statuses[plugin_name]
+            subs = processed.by_plugin.get(plugin_name, [])
+            if status == "ok":
+                status_str = "[green]ok[/green]"
+            elif status == "partial":
+                status_str = "[yellow]partial (throttled)[/yellow]"
+            elif status == "auth_error":
+                status_str = "[red]auth error[/red]"
+            else:
+                status_str = "[red]unavailable[/red]"
+            summary.add_row(f"[{plugin_name}] ({status_str})", str(len(subs)))
 
         if processed.wildcards:
             summary.add_row("[wildcards re-scanned]", str(len(processed.wildcards)))
@@ -124,6 +146,7 @@ def render_enum_results(
 
 
 def render_http_probe_summary(rows: list, domain: str) -> None:
+    """Render HTTP liveness probe results and summary counters."""
     alive = [r for r in rows if r.alive is True]
     dead = [r for r in rows if r.alive is False]
     unchecked = [r for r in rows if r.alive is None]

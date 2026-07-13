@@ -1,6 +1,9 @@
+"""Service layer for database operations."""
 from datetime import datetime
+
 from core.db_models import Subdomain
 from core.services.base import Service
+
 
 class DbService(Service):
     """Encapsulates all database query operations for the CLI."""
@@ -19,10 +22,9 @@ class DbService(Service):
         async def _query(storage) -> list[Subdomain]:
             if filter_plugin:
                 return await storage.get_by_plugin(domain, filter_plugin)
-            elif new_since:
+            if new_since:
                 return await storage.get_new_since(domain, new_since)
-            else:
-                return await storage.get_all(domain)
+            return await storage.get_all(domain)
 
         return await self._with_storage(_query)
 

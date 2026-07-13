@@ -1,3 +1,4 @@
+"""Storage manager for executing database operations, upserts, queries, and migrations."""
 import asyncio
 import logging
 import shutil
@@ -5,13 +6,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import delete, func, inspect, text, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (AsyncEngine, AsyncSession,
                                     create_async_engine)
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import selectinload, sessionmaker
 from sqlmodel import SQLModel, select
 
-from core.db_models import Subdomain
+from core.db_models import Subdomain, SubdomainSource
 from core.models import ProcessedResult
 
 logger = logging.getLogger(__name__)
@@ -20,7 +22,10 @@ DATABASE_URL = "sqlite+aiosqlite:///subx.db"
 
 
 class StorageManager:
+    """Manages raw connection pooling, transactions, dynamic migrations, and schema definition."""
+
     def __init__(self, db_url: str = DATABASE_URL) -> None:
+        self.db_url = db_url
         self.engine: AsyncEngine = create_async_engine(db_url, echo=False, future=True)
         self._session_factory = sessionmaker(
             bind=self.engine,
@@ -29,8 +34,10 @@ class StorageManager:
         )
         self._init_lock = asyncio.Lock()
         self._initialized = False
+        self._ro_engine = None
 
     async def init(self) -> None:
+        """Initialize connection engines and create schema tables if missing."""
         async with self._init_lock:
             if self._initialized:
                 return
@@ -41,9 +48,6 @@ class StorageManager:
             except SQLAlchemyError as e:
                 logger.error("Failed to initialize database: %s", e)
                 raise
-
-    async def close(self) -> None:
-        await self.engine.dispose()
 
     async def update_results(
         self, target: str, results: list[dict]
@@ -109,13 +113,10 @@ class StorageManager:
                         updated += result.rowcount
         return updated
 
+    # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     async def migrate(self, backup: bool = True) -> list[str]:
-        """Compare the model schema against the live DB and add missing columns.
-
-        Only additive changes (new nullable columns) are applied — nothing is
-        dropped or altered, so this is always safe to run.
-
-        Returns a list of column names that were added.
+        """Compare the model schema against the live DB and add missing columns,
+        and ensure unique constraints and join tables are properly migrated.
         """
         self._ensure_initialized()
 
@@ -127,10 +128,15 @@ class StorageManager:
             shutil.copy2(db_path, backup_path)
             logger.info("Backup created: %s", backup_path)
 
+        # 1. Create any missing tables (like subdomain_sources)
+        async with self.engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
+
         added: list[str] = []
 
+        # 2. Add any new columns to subdomain first
         async with self.engine.connect() as conn:
-            existing_cols: set[str] = await conn.run_sync(
+            existing_cols = await conn.run_sync(
                 lambda sync_conn: {
                     col["name"]
                     for col in inspect(sync_conn).get_columns("subdomain")
@@ -138,7 +144,6 @@ class StorageManager:
             )
 
             model_table = SQLModel.metadata.tables["subdomain"]
-
             for col in model_table.columns:
                 if col.name in existing_cols:
                     continue
@@ -150,6 +155,97 @@ class StorageManager:
                 logger.info("Added column: %s (%s)", col.name, col_type)
 
             await conn.commit()
+
+        # 3. Check for the unique constraint on (target, subdomain)
+        has_unique_constraint = False
+        async with self.engine.connect() as conn:
+            indexes = await conn.run_sync(
+                lambda sync_conn: inspect(sync_conn).get_indexes("subdomain")
+            )
+            for idx in indexes:
+                is_target_subdomain = set(idx.get("column_names", [])) == {"target", "subdomain"}
+                if idx.get("unique") and is_target_subdomain:
+                    has_unique_constraint = True
+                    break
+
+            if not has_unique_constraint:
+                unique_cons = await conn.run_sync(
+                    lambda sync_conn: inspect(sync_conn).get_unique_constraints("subdomain")
+                )
+                for uc in unique_cons:
+                    if set(uc.get("column_names", [])) == {"target", "subdomain"}:
+                        has_unique_constraint = True
+                        break
+
+        # 4. If missing unique constraint, recreate table and migrate data
+        if not has_unique_constraint:
+            logger.info(
+                "Migrating subdomain table to add unique constraint on (target, subdomain)"
+            )
+            async with self.engine.connect() as conn:
+                existing_cols_list = await conn.run_sync(
+                    lambda sync_conn: inspect(sync_conn).get_columns("subdomain")
+                )
+
+            col_defs = []
+            for col in existing_cols_list:
+                col_name = col["name"]
+                col_type = str(col["type"])
+                nullable = "NULL" if col.get("nullable", True) else "NOT NULL"
+                if col_name == "id":
+                    col_defs.append("id INTEGER PRIMARY KEY AUTOINCREMENT")
+                else:
+                    col_defs.append(f'"{col_name}" {col_type} {nullable}')
+            col_defs.append("UNIQUE(target, subdomain)")
+
+            ddl_create = f"CREATE TABLE subdomain_new ({', '.join(col_defs)});"
+
+            select_fields = []
+            for col in existing_cols_list:
+                col_name = col["name"]
+                if col_name == "id":
+                    continue
+                if col_name == "first_seen":
+                    select_fields.append("MIN(first_seen) as first_seen")
+                elif col_name == "last_seen":
+                    select_fields.append("MAX(last_seen) as last_seen")
+                else:
+                    select_fields.append(f'"{col_name}"')
+
+            col_names_str = ", ".join(
+                f'"{col["name"]}"' for col in existing_cols_list if col["name"] != "id"
+            )
+            select_fields_str = ", ".join(select_fields)
+
+            dedup_insert = f"""
+            INSERT INTO subdomain_new ({col_names_str})
+            SELECT {select_fields_str}
+            FROM subdomain
+            GROUP BY target, subdomain;
+            """  # nosec B608
+
+            sources_insert = """
+            INSERT OR IGNORE INTO subdomain_sources (subdomain_id, source_plugin)
+            SELECT n.id, o.source_plugin
+            FROM subdomain_new n
+            JOIN subdomain o ON n.target = o.target AND n.subdomain = o.subdomain;
+            """
+
+            async with self.engine.begin() as conn:
+                await conn.execute(text(ddl_create))
+                await conn.execute(text(dedup_insert))
+                await conn.execute(text(sources_insert))
+                await conn.execute(text("DROP TABLE subdomain;"))
+                await conn.execute(text("ALTER TABLE subdomain_new RENAME TO subdomain;"))
+                await conn.execute(
+                    text("CREATE INDEX ix_subdomain_target ON subdomain (target);")
+                )
+                await conn.execute(
+                    text("CREATE INDEX ix_subdomain_subdomain ON subdomain (subdomain);")
+                )
+
+            logger.info("Migrated subdomain table successfully.")
+            added.append("uq_target_subdomain_constraint")
 
         return added
 
@@ -165,6 +261,7 @@ class StorageManager:
         return None
 
     async def save(self, result: ProcessedResult, target: str) -> int:
+        """Save a ProcessedResult of subdomain scan results into the database."""
         self._ensure_initialized()
         new_count = 0
         async with self._session() as session:
@@ -176,6 +273,7 @@ class StorageManager:
         return new_count
 
     async def delete(self, target: str) -> int:
+        """Delete all database records associated with the target domain."""
         self._ensure_initialized()
         async with self._session() as session:
             async with session.begin():
@@ -185,53 +283,65 @@ class StorageManager:
         return result.rowcount
 
     async def get_all(self, target: str) -> list[Subdomain]:
+        """Fetch all stored subdomains for the target domain, including sources."""
         self._ensure_initialized()
         async with self._session() as session:
             result = await session.execute(
                 select(Subdomain)
                 .where(Subdomain.target == target)
+                .options(selectinload(Subdomain.sources))
                 .order_by(Subdomain.subdomain)
             )
             return list(result.scalars().all())
 
     async def get_by_plugin(self, target: str, plugin_name: str) -> list[Subdomain]:
+        """Fetch stored subdomains for the target domain discovered by a specific plugin."""
         self._ensure_initialized()
         async with self._session() as session:
             result = await session.execute(
                 select(Subdomain)
+                .join(SubdomainSource)
                 .where(
                     Subdomain.target == target,
-                    Subdomain.source_plugin == plugin_name,
+                    SubdomainSource.source_plugin == plugin_name,
                 )
+                .options(selectinload(Subdomain.sources))
                 .order_by(Subdomain.subdomain)
             )
             return list(result.scalars().all())
 
     async def get_new_since(self, target: str, since: datetime) -> list[Subdomain]:
+        """Fetch stored subdomains for the target domain first seen on or after a given time."""
         self._ensure_initialized()
         async with self._session() as session:
             result = await session.execute(
+                # pylint: disable=no-member
                 select(Subdomain)
                 .where(
                     Subdomain.target == target,
                     Subdomain.first_seen >= since,
                 )
+                .options(selectinload(Subdomain.sources))
                 .order_by(Subdomain.first_seen.desc())
             )
             return list(result.scalars().all())
 
     async def count(self, target: str) -> int:
+        """Count the number of subdomains stored for the target domain."""
         self._ensure_initialized()
         async with self._session() as session:
+            # pylint: disable=not-callable
             result = await session.execute(
                 select(func.count()).where(Subdomain.target == target)
             )
             return result.scalar_one()
 
     async def get_targets_summary(self) -> list[dict]:
+        """Return a target-level summary list of database contents."""
         self._ensure_initialized()
         _fromisoformat = datetime.fromisoformat
         async with self._session() as session:
+            # pylint: disable=not-callable
             result = await session.execute(
                 select(
                     Subdomain.target,
@@ -252,33 +362,47 @@ class StorageManager:
             ]
 
     async def raw_query(self, query: str) -> list[dict]:
+        """Execute a raw SQL query against a read-only instance of the database."""
         self._ensure_initialized()
-        q = query.strip()
-        if not q.upper().startswith("SELECT"):
-            raise ValueError("raw_query() only accepts SELECT statements.")
 
-        if ";" in q:
-            raise ValueError("Semicolons are not allowed in custom queries.")
+        if self._ro_engine is None:
+            db_path = self._resolve_db_path()
+            if db_path:
+                ro_url = (
+                    f"sqlite+aiosqlite:///file:{db_path.absolute().as_posix()}"
+                    "?mode=ro&uri=true"
+                )
+            else:
+                ro_url = self.db_url
 
-        forbidden = {"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "REPLACE", "REINDEX", "ATTACH", "DETACH"}
-        # Split by spaces and non-alphanumeric chars to isolate SQL words
-        import re
-        words = {w.upper() for w in re.findall(r"\b\w+\b", q)}
-        if forbidden.intersection(words):
-            raise ValueError("Only read-only SELECT queries are allowed.")
+            self._ro_engine = create_async_engine(ro_url)
 
-        async with self._session() as session:
-            result = await session.execute(text(q))
-            return [dict(row) for row in result.mappings().all()]
+        async with self._ro_engine.connect() as conn:
+            result = await conn.execute(text(query))
+            if result.returns_rows:
+                return [dict(row) for row in result.mappings().all()]
+            return []
+
     def _session(self) -> AsyncSession:
+        """Generate a new database transaction session."""
         return self._session_factory()
 
     def _ensure_initialized(self) -> None:
+        """Ensure storage engines are fully initialized before usage."""
         if not self._initialized:
             raise RuntimeError(
                 "StorageManager not initialized — call `await storage.init()` first."
             )
 
+    async def close(self) -> None:
+        """Close database engines and release all connection resources."""
+        if self._initialized:
+            await self.engine.dispose()
+            if self._ro_engine is not None:
+                await self._ro_engine.dispose()
+            self._initialized = False
+
+    # pylint: disable=too-many-locals
     async def _upsert_batch(
         self,
         session: AsyncSession,
@@ -286,51 +410,73 @@ class StorageManager:
         subdomains: list[str],
         plugin_name: str,
     ) -> int:
+        """Perform a batch sqlite upsert and populate subdomain source linkages."""
         if not subdomains:
             return 0
 
         now = datetime.now(tz=timezone.utc)
         chunk_size = 450
 
-        existing: dict[str, Subdomain] = {}
+        # Query existing subdomains in this batch to determine new_count
+        existing_subdomains = set()
         for i in range(0, len(subdomains), chunk_size):
             batch = subdomains[i : i + chunk_size]
+            # pylint: disable=no-member
             result = await session.execute(
-                select(Subdomain).where(
+                select(Subdomain.subdomain).where(
                     Subdomain.target == target,
                     Subdomain.subdomain.in_(batch),
                 )
             )
-            existing.update({row.subdomain: row for row in result.scalars().all()})
+            existing_subdomains.update(result.scalars().all())
 
-        # Bulk update existing rows
-        existing_names = set(existing)
-        to_update = [s for s in subdomains if s in existing_names]
-        if to_update:
-            for i in range(0, len(to_update), chunk_size):
-                batch = to_update[i : i + chunk_size]
-                await session.execute(
-                    update(Subdomain)
-                    .where(
-                        Subdomain.target == target,
-                        Subdomain.subdomain.in_(batch),
-                    )
-                    .values(last_seen=now)
+        new_count = 0
+        for sub in subdomains:
+            if sub not in existing_subdomains:
+                new_count += 1
+
+            stmt = (
+                sqlite_insert(Subdomain)
+                .values(
+                    target=target,
+                    subdomain=sub,
+                    source_plugin=plugin_name,
+                    first_seen=now,
+                    last_seen=now,
                 )
-
-        # Batch insert new rows
-        new_rows = [
-            Subdomain(
-                target=target,
-                subdomain=sub,
-                source_plugin=plugin_name,
-                first_seen=now,
-                last_seen=now,
+                .on_conflict_do_update(
+                    index_elements=["target", "subdomain"],
+                    set_={"last_seen": now},
+                )
             )
-            for sub in subdomains
-            if sub not in existing_names
-        ]
-        if new_rows:
-            session.add_all(new_rows)
+            await session.execute(stmt)
 
-        return len(new_rows)
+        # Retrieve IDs to populate subdomain_sources
+        subdomain_ids = {}
+        for i in range(0, len(subdomains), chunk_size):
+            batch = subdomains[i : i + chunk_size]
+            # pylint: disable=no-member
+            result = await session.execute(
+                select(Subdomain.id, Subdomain.subdomain).where(
+                    Subdomain.target == target,
+                    Subdomain.subdomain.in_(batch),
+                )
+            )
+            for sub_id, name in result.all():
+                subdomain_ids[name] = sub_id
+
+        # Insert sources into join table
+        for name in subdomains:
+            sub_id = subdomain_ids.get(name)
+            if sub_id:
+                stmt_source = (
+                    sqlite_insert(SubdomainSource)
+                    .values(
+                        subdomain_id=sub_id,
+                        source_plugin=plugin_name,
+                    )
+                    .on_conflict_do_nothing()
+                )
+                await session.execute(stmt_source)
+
+        return new_count

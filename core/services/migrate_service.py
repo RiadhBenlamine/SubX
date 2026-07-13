@@ -1,4 +1,6 @@
+"""Service layer for database schema migrations."""
 from core.services.base import Service
+
 
 class MigrateService(Service):
     """Handles database schema migrations."""

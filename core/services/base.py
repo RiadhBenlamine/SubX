@@ -1,11 +1,15 @@
-from abc import ABC
+"""Base service classes and database singleton provider."""
 import logging
+from abc import ABC
+
 from core.storage_manager import StorageManager
 
 # Module-level shared engine — initialized once, reused across all services.
+# pylint: disable=invalid-name
 _shared_storage: StorageManager | None = None
 
 
+# pylint: disable=global-statement
 def _get_storage() -> StorageManager:
     """Return or create the shared StorageManager singleton."""
     global _shared_storage

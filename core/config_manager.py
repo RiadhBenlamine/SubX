@@ -1,3 +1,4 @@
+"""Configuration manager to load environment variables, scope, and API keys."""
 import json
 import logging
 from pathlib import Path
@@ -6,10 +7,14 @@ from typing import Optional
 import yaml
 from dotenv import dotenv_values
 
+from core.processor import normalize_and_validate_domain
+
 logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
+    """Loads and validates scan scopes, out-of-scope targets, plugin filters, and API keys."""
+
     def __init__(self, config_path: str):
         self.config_path = Path(config_path)
 
@@ -48,8 +53,22 @@ class ConfigManager:
             logger.error("Failed to parse config file: %s", e)
             raise
 
-        self.scope = self._parse_list(data, "scope")
-        self.out_of_scope = self._parse_list(data, "out_of_scope")
+        scope_raw = self._parse_list(data, "scope")
+        self.scope = []
+        for s in scope_raw:
+            try:
+                self.scope.append(normalize_and_validate_domain(s))
+            except ValueError as e:
+                raise ValueError(f"Invalid entry in scope: {e}") from e
+
+        oos_raw = self._parse_list(data, "out_of_scope")
+        self.out_of_scope = []
+        for s in oos_raw:
+            try:
+                self.out_of_scope.append(normalize_and_validate_domain(s))
+            except ValueError as e:
+                raise ValueError(f"Invalid entry in out_of_scope: {e}") from e
+
         self.sources = self._parse_list(data, "sources") or None
 
         if not self.scope:
@@ -71,16 +90,21 @@ class ConfigManager:
         return []
 
     def get_api_keys(self) -> dict[str, str]:
+        """Get the loaded API credentials."""
         return self.api_keys
 
     def get_scope(self) -> list[str]:
+        """Get the target domains defined in the active scope."""
         return self.scope
 
     def get_primary(self) -> str:
+        """Get the primary target domain (first item in active scope)."""
         return self.scope[0]
 
     def get_out_of_scope(self) -> list[str]:
+        """Get the blacklisted domains defined as out-of-scope."""
         return self.out_of_scope
 
     def get_sources(self) -> Optional[list[str]]:
+        """Get the allowed plugin sources list filter."""
         return self.sources
