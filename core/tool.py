@@ -5,24 +5,9 @@ import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-
-class ToolNotFoundError(Exception):
-    """Raised when a required external tool binary cannot be located."""
-
-
-class ToolExecutionError(Exception):
-    """Raised when an external tool exits with a non-zero status."""
-
-    def __init__(self, name: str, returncode: int, stderr: str):
-        self.name = name
-        self.returncode = returncode
-        self.stderr = stderr
-        super().__init__(f"{name} exited with code {returncode}: {stderr.strip()[:500]}")
-
-
-class ToolTimeoutError(Exception):
-    """Raised when an external tool exceeds its allotted runtime."""
-
+from core.errors import (
+ToolNotFoundError,ToolExecutionError,ToolTimeoutError
+)
 
 class Tool(ABC):
     """

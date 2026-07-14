@@ -19,3 +19,21 @@ class PluginRateLimitError(PluginException):
 
 class PluginUnavailableError(PluginException):
     """Raised when the target source is transiently down or returns 5xx/timeouts."""
+
+
+class ToolNotFoundError(Exception):
+    """Raised when a required external tool binary cannot be located."""
+
+
+class ToolExecutionError(Exception):
+    """Raised when an external tool exits with a non-zero status."""
+
+    def __init__(self, name: str, returncode: int, stderr: str):
+        self.name = name
+        self.returncode = returncode
+        self.stderr = stderr
+        super().__init__(f"{name} exited with code {returncode}: {stderr.strip()[:500]}")
+
+
+class ToolTimeoutError(Exception):
+    """Raised when an external tool exceeds its allotted runtime."""
