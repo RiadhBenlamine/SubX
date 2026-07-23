@@ -12,7 +12,6 @@ ToolNotFoundError,ToolExecutionError,ToolTimeoutError
 class Tool(ABC):
     """
     Generic abstract base class for SubX external tool wrappers
-    (httpx, naabu, nuclei, the Go resolver, etc).
 
     Resolution strategy:
       - Windows: BASE_DIR/bin/<name>/<name>.exe (bundled)
@@ -23,7 +22,7 @@ class Tool(ABC):
 
     BASE_DIR = Path(__file__).resolve().parent.parent
 
-    # Subclasses override this with the actual binary name, e.g. "httpx"
+    # Subclasses override this with the actual binary name
     TOOL_NAME: str = ""
 
     @staticmethod
