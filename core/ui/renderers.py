@@ -239,3 +239,25 @@ def render_project_summary(summary) -> None:
 
     console.print(table)
     console.print()
+
+
+def render_import_summary(summary) -> None:
+    """Render a visual summary of the database import operation."""
+    console.print("\n[bold cyan]📦 Database Import Complete[/bold cyan]")
+    console.print(f"[dim]  Source SQLite : [/dim][bold white]{summary.sqlite_file}[/bold white]")
+    console.print(f"[dim]  Target DB URL : [/dim][bold white]{summary.target_db_url}[/bold white]\n")
+
+    summary_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+    summary_table.add_column(style="dim white")
+    summary_table.add_column(style="bold white")
+
+    summary_table.add_row("Targets Migrated", str(summary.targets_count))
+    summary_table.add_row("Subdomains Imported", f"[bold green]{summary.subdomains_imported}[/bold green]")
+    summary_table.add_row("Sources Linked", str(summary.sources_linked))
+
+    console.print(Panel(
+        summary_table,
+        title="[bold cyan]Import Summary[/bold cyan]",
+        border_style="cyan",
+    ))
+    console.print()

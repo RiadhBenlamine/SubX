@@ -4,6 +4,7 @@ import typer
 from core.cmd.base import HELP_NAMES
 from core.cmd.db import DbCommand
 from core.cmd.enum import EnumCommand
+from core.cmd.import_sqlite import ImportSqliteCommand
 from core.cmd.migrate import MigrateCommand
 from core.cmd.probe import ProbeCommand
 from core.cmd.project import ProjectCommand
@@ -21,4 +22,5 @@ EnumCommand().register(app)
 DbCommand().register(app)
 ProbeCommand().register(app)
 ProjectCommand().register(app)
+ImportSqliteCommand().register(app)
 MigrateCommand().register(app)

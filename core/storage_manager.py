@@ -1,12 +1,12 @@
 """Storage manager for executing database operations, upserts, queries, and migrations."""
 import asyncio
 import logging
+import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import delete, func, inspect, text, update
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import selectinload, sessionmaker
@@ -17,15 +17,30 @@ from core.models import ProcessedResult
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = "sqlite+aiosqlite:///subx.db"
+DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///subx.db"
+
+
+def normalize_db_url(db_url: str | None = None) -> str:
+    """Resolve and normalize database URL for SQLite or PostgreSQL engines."""
+    url = (
+        db_url
+        or os.environ.get("DATABASE_URL")
+        or os.environ.get("SUBX_DB_URL")
+        or DEFAULT_DATABASE_URL
+    )
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url and "+psycopg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
 
 
 class StorageManager:
     """Manages raw connection pooling, transactions, dynamic migrations, and schema definition."""
 
-    def __init__(self, db_url: str = DATABASE_URL) -> None:
-        self.db_url = db_url
-        self.engine: AsyncEngine = create_async_engine(db_url, echo=False, future=True)
+    def __init__(self, db_url: str | None = None) -> None:
+        self.db_url = normalize_db_url(db_url)
+        self.engine: AsyncEngine = create_async_engine(self.db_url, echo=False, future=True)
         self._session_factory = sessionmaker(
             bind=self.engine,
             class_=AsyncSession,
@@ -474,13 +489,21 @@ class StorageManager:
             )
             existing_subdomains.update(result.scalars().all())
 
+        is_pg = self.engine.dialect.name == "postgresql"
+        if is_pg:
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+            insert_fn = pg_insert
+        else:
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+            insert_fn = sqlite_insert
+
         new_count = 0
         for sub in subdomains:
             if sub not in existing_subdomains:
                 new_count += 1
 
             stmt = (
-                sqlite_insert(Subdomain)
+                insert_fn(Subdomain)
                 .values(
                     target=target,
                     subdomain=sub,
@@ -513,14 +536,26 @@ class StorageManager:
         for name in subdomains:
             sub_id = subdomain_ids.get(name)
             if sub_id:
-                stmt_source = (
-                    sqlite_insert(SubdomainSource)
-                    .values(
-                        subdomain_id=sub_id,
-                        source_plugin=plugin_name,
+                if is_pg:
+                    stmt_source = (
+                        insert_fn(SubdomainSource)
+                        .values(
+                            subdomain_id=sub_id,
+                            source_plugin=plugin_name,
+                        )
+                        .on_conflict_do_nothing(
+                            index_elements=["subdomain_id", "source_plugin"]
+                        )
                     )
-                    .on_conflict_do_nothing()
-                )
+                else:
+                    stmt_source = (
+                        insert_fn(SubdomainSource)
+                        .values(
+                            subdomain_id=sub_id,
+                            source_plugin=plugin_name,
+                        )
+                        .on_conflict_do_nothing()
+                    )
                 await session.execute(stmt_source)
 
         return new_count

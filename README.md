@@ -257,7 +257,30 @@ subx http-probe -d example.com --project
 * `-d`, `--domain` (Required): Target domain name.
 * `-o`, `--output-dir`: Base directory for projects (Default: `projects`).
 
-### 5. Database Migrations (`dev-migrate`)
+### 5. PostgreSQL Database Engine Support
+SubX natively supports both **SQLite** (default) and **PostgreSQL** database engines.
+
+To connect SubX to a PostgreSQL database, set the `DATABASE_URL` environment variable:
+```bash
+export DATABASE_URL="postgresql+asyncpg://user:password@localhost:5432/subx"
+```
+
+SubX will automatically create and manage all schema tables, indexes, constraints, and dialect-agnostic upsert statements on PostgreSQL.
+
+### 6. Import SQLite Database into PostgreSQL (`import-sqlite`)
+Migrate an existing SQLite database (e.g. `subx.db`) into your PostgreSQL database:
+
+```bash
+# Import into active PostgreSQL database (reads DATABASE_URL env var)
+subx import-sqlite subx.db
+
+# Import with explicit target PostgreSQL URL
+subx import-sqlite subx.db -t "postgresql+asyncpg://user:pass@localhost:5432/subx"
+```
+
+This utility migrates all stored target domains, subdomains, status codes, page titles, tech tags, host IPs, first/last seen timestamps, and plugin source linkages cleanly.
+
+### 7. Database Migrations (`dev-migrate`)
 As SubX development progresses and database models change, migrate your database schema to keep it up to date:
 
 ```bash
