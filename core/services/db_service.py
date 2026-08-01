@@ -18,16 +18,25 @@ class DbService(Service):
         filter_plugin: str | None = None,
         new_since: datetime | None = None,
         filter_tech: str | None = None,
+        only_alive: bool = False,
     ) -> list[Subdomain]:
         """Fetch subdomains for a domain with optional filters."""
         async def _query(storage) -> list[Subdomain]:
             if filter_plugin:
-                return await storage.get_by_plugin(domain, filter_plugin)
-            if filter_tech:
-                return await storage.get_by_tech(domain, filter_tech)
-            if new_since:
-                return await storage.get_new_since(domain, new_since)
-            return await storage.get_all(domain)
+                rows = await storage.get_by_plugin(domain, filter_plugin)
+            elif filter_tech:
+                rows = await storage.get_by_tech(domain, filter_tech)
+            elif new_since:
+                rows = await storage.get_new_since(domain, new_since)
+            elif only_alive:
+                rows = await storage.get_alive(domain)
+            else:
+                rows = await storage.get_all(domain)
+
+            if only_alive and not (not filter_plugin and not filter_tech and not new_since and only_alive):
+                rows = [r for r in rows if r.alive is True]
+
+            return rows
 
         return await self._with_storage(_query)
 

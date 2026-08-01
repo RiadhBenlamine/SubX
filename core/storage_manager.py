@@ -326,6 +326,21 @@ class StorageManager:
             )
             return list(result.scalars().all())
 
+    async def get_alive(self, target: str) -> list[Subdomain]:
+        """Fetch subdomains for the target domain that are verified alive."""
+        self._ensure_initialized()
+        async with self._session() as session:
+            result = await session.execute(
+                select(Subdomain)
+                .where(
+                    Subdomain.target == target,
+                    Subdomain.alive == True,  # noqa: E712
+                )
+                .options(selectinload(Subdomain.sources))
+                .order_by(Subdomain.subdomain)
+            )
+            return list(result.scalars().all())
+
     async def get_new_since(self, target: str, since: datetime) -> list[Subdomain]:
         """Fetch stored subdomains for the target domain first seen on or after a given time."""
         self._ensure_initialized()

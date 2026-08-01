@@ -48,13 +48,32 @@ def render_db_rows(rows: list) -> None:
     console.print(table)
 
 
+import json
+
+
+def _format_tech(tech_raw: str | list | None) -> str:
+    """Format raw tech JSON string or list into a clean comma-separated string."""
+    if not tech_raw:
+        return "—"
+    if isinstance(tech_raw, list):
+        return ", ".join(tech_raw) if tech_raw else "—"
+    try:
+        data = json.loads(tech_raw)
+        if isinstance(data, list) and data:
+            return ", ".join(data)
+        return str(data) if data else "—"
+    except Exception:
+        return str(tech_raw)
+
+
 def render_db_rows_web(rows: list) -> None:
-    """Render a table showing web status information (liveness, HTTP status, page title)."""
+    """Render a table showing web status information (liveness, HTTP status, page title, tech)."""
     table = make_table(
         ("SUBDOMAIN", {"style": "white"}),
         ("ALIVE",     {"style": "white",     "justify": "center"}),
         ("STATUS",    {"style": "green",     "justify": "right"}),
         ("TITLE",     {"style": "dim white", "no_wrap": True, "overflow": "ellipsis"}),
+        ("TECH",      {"style": "cyan",      "no_wrap": True, "overflow": "ellipsis"}),
     )
     for row in rows:
         if row.alive is True:
@@ -65,11 +84,13 @@ def render_db_rows_web(rows: list) -> None:
             alive_str = "[dim]?[/dim]"
         status_str = str(row.status_code) if row.status_code is not None else "—"
         title_str = row.title if row.title else "—"
+        tech_str = _format_tech(getattr(row, "tech", None))
         table.add_row(
             row.subdomain,
             alive_str,
             status_str,
             title_str,
+            tech_str,
         )
     console.print(table)
 
@@ -156,13 +177,16 @@ def render_http_probe_summary(rows: list, domain: str) -> None:
         ("ALIVE",        {"style": "white",    "justify": "center"}),
         ("STATUS",       {"style": "green",    "justify": "right"}),
         ("TITLE",        {"style": "dim white", "overflow": "fold"}),
+        ("TECH",         {"style": "cyan",      "overflow": "fold"}),
     )
     for row in alive:
+        tech_str = _format_tech(getattr(row, "tech", None))
         table.add_row(
             row.subdomain,
             "[bold green]✔[/bold green]",
             str(row.status_code) if row.status_code is not None else "—",
             row.title or "—",
+            tech_str,
         )
     console.print(table)
     console.print()

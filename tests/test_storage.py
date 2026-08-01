@@ -115,3 +115,44 @@ async def test_migration_path(tmp_path):
     assert set(s.source_plugin for s in sub.sources) == {"PluginA", "PluginB"}
     
     await storage.close()
+
+
+@pytest.mark.anyio
+async def test_storage_tech_and_alive():
+    storage = StorageManager("sqlite+aiosqlite:///:memory:")
+    await storage.init()
+
+    target = "example.com"
+    res = ProcessedResult(by_plugin={"ShodanPlugin": ["app.example.com", "api.example.com"]})
+    await storage.save(res, target)
+
+    # Simulate httpx probe results update
+    probe_results = [
+        {
+            "subdomain": "app.example.com",
+            "alive": True,
+            "status_code": 200,
+            "title": "App",
+            "tech": '["Nginx", "React"]',
+        },
+        {
+            "subdomain": "api.example.com",
+            "alive": False,
+            "tech": None,
+        },
+    ]
+    updated = await storage.update_results(target, probe_results)
+    assert updated == 2
+
+    # Verify get_by_tech
+    nginx_subs = await storage.get_by_tech(target, "Nginx")
+    assert len(nginx_subs) == 1
+    assert nginx_subs[0].subdomain == "app.example.com"
+
+    # Verify get_alive
+    alive_subs = await storage.get_alive(target)
+    assert len(alive_subs) == 1
+    assert alive_subs[0].subdomain == "app.example.com"
+
+    await storage.close()
+

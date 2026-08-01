@@ -32,6 +32,12 @@ class DbCommand(Command):
         filter_plugin: Optional[str] = typer.Option(
             None, "--filter-plugin", help="Filter results by plugin name."
         ),
+        filter_tech: Optional[str] = typer.Option(
+            None, "--filter-tech", help="Filter results by detected technology (e.g. 'Nginx')."
+        ),
+        only_alive: bool = typer.Option(
+            False, "--alive", "--only-alive", help="Show/filter only verified ALIVE subdomains."
+        ),
         new_since: Optional[str] = typer.Option(
             None, "--new-since", help="Show subdomains first seen after YYYY-MM-DD."
         ),
@@ -49,6 +55,12 @@ class DbCommand(Command):
                 "Use -oX '<sep>:<file>' e.g. ' :out.txt' or ';:out.txt'"
             ),
         ),
+        output_tech: Optional[str] = typer.Option(
+            None,
+            "-oT",
+            "--output-tech",
+            help="Save subdomains with detected technologies to file.",
+        ),
         raw_query: Optional[str] = typer.Option(
             None,
             "-C",
@@ -64,10 +76,13 @@ class DbCommand(Command):
                 domain,
                 web,
                 filter_plugin,
+                filter_tech,
+                only_alive,
                 new_since,
                 delete,
                 output_n,
                 output_x,
+                output_tech,
                 raw_query,
             )
         )
@@ -78,10 +93,13 @@ class DbCommand(Command):
         domain: Optional[str],
         web: bool,
         filter_plugin: Optional[str],
+        filter_tech: Optional[str],
+        only_alive: bool,
         new_since: Optional[str],
         delete: bool,
         output_n: Optional[str],
         output_x: Optional[str],
+        output_tech: Optional[str],
         raw_query: Optional[str],
     ) -> None:
         self.show_banner()
@@ -94,14 +112,14 @@ class DbCommand(Command):
             return
 
         if not domain:
-            if any([delete, filter_plugin, new_since, output_n, output_x, web]):
+            if any([delete, filter_plugin, filter_tech, only_alive, new_since, output_n, output_x, output_tech, web]):
                 error("Filters and output flags require -d <domain>.")
             await self._db_summary(service)
             return
 
         if delete:
-            if output_n or output_x:
-                warn("-oN / -oX are ignored when using --delete.")
+            if output_n or output_x or output_tech:
+                warn("-oN / -oX / -oT are ignored when using --delete.")
             await self._db_delete(service, domain)
             return
 
@@ -110,9 +128,12 @@ class DbCommand(Command):
             domain,
             web,
             filter_plugin,
+            filter_tech,
+            only_alive,
             new_since,
             output_n,
             output_x,
+            output_tech,
         )
 
     async def _db_summary(self, service: DbService) -> None:
@@ -142,30 +163,39 @@ class DbCommand(Command):
         domain: str,
         web: bool,
         filter_plugin: Optional[str],
+        filter_tech: Optional[str],
+        only_alive: bool,
         new_since: Optional[str],
         output_n: Optional[str],
         output_x: Optional[str],
+        output_tech: Optional[str],
     ) -> None:
         since_dt = None
+        filters_str = []
         if filter_plugin:
-            info(
-                f"Target : [bold white]{domain}[/bold white]  "
-                f"Plugin : [bold white]{filter_plugin}[/bold white]"
-            )
-        elif new_since:
+            filters_str.append(f"Plugin : [bold white]{filter_plugin}[/bold white]")
+        if filter_tech:
+            filters_str.append(f"Tech : [bold white]{filter_tech}[/bold white]")
+        if only_alive:
+            filters_str.append("Filter : [bold green]Alive only[/bold green]")
+        if new_since:
             try:
                 since_dt = datetime.strptime(new_since, "%Y-%m-%d")
             except ValueError:
                 error("Invalid date format. Use YYYY-MM-DD.")
-            info(
-                f"Target : [bold white]{domain}[/bold white]  "
-                f"New since : [bold white]{new_since}[/bold white]"
-            )
-        else:
-            info(f"Target : [bold white]{domain}[/bold white]")
+            filters_str.append(f"New since : [bold white]{new_since}[/bold white]")
+
+        info_msg = f"Target : [bold white]{domain}[/bold white]"
+        if filters_str:
+            info_msg += "  " + "  ".join(filters_str)
+        info(info_msg)
 
         rows = await service.get_subdomains(
-            domain, filter_plugin=filter_plugin, new_since=since_dt
+            domain,
+            filter_plugin=filter_plugin,
+            filter_tech=filter_tech,
+            new_since=since_dt,
+            only_alive=only_alive,
         )
 
         console.print()
@@ -192,6 +222,14 @@ class DbCommand(Command):
         if output_x:
             sep, file = ExportService.parse_ox(output_x)
             ExportService.write_output(subdomains, file, separator=sep)
+
+        if output_tech:
+            from core.ui.renderers import _format_tech
+            tech_lines = [
+                f"{row.subdomain} [{_format_tech(getattr(row, 'tech', None))}]"
+                for row in rows
+            ]
+            ExportService.write_output(tech_lines, output_tech, separator="\n")
 
     async def _db_raw_query(
         self,

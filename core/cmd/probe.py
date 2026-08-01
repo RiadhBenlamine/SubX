@@ -37,11 +37,21 @@ class ProbeCommand(Command):
                 "Use -oX '<sep>:<file>'."
             ),
         ),
+        output_tech: Optional[str] = typer.Option(
+            None,
+            "-oT",
+            "--output-tech",
+            help="Save alive subdomains with detected technologies to file.",
+        ),
     ) -> None:
-        self.run_async(self._http_probe(domain, output_n, output_x))
+        self.run_async(self._http_probe(domain, output_n, output_x, output_tech))
 
     async def _http_probe(
-        self, domain: str, output_n: Optional[str], output_x: Optional[str]
+        self,
+        domain: str,
+        output_n: Optional[str],
+        output_x: Optional[str],
+        output_tech: Optional[str],
     ) -> None:
         self.show_banner()
         self.setup_logging()
@@ -80,11 +90,12 @@ class ProbeCommand(Command):
         console.print()
         render_http_probe_summary(rows, domain)
 
-        if output_n or output_x:
-            alive_subs = [row.subdomain for row in rows if row.alive is True]
-            if not alive_subs:
+        if output_n or output_x or output_tech:
+            alive_rows = [row for row in rows if row.alive is True]
+            if not alive_rows:
                 warn("No alive subdomains to write.")
             else:
+                alive_subs = [r.subdomain for r in alive_rows]
                 if output_n:
                     ExportService.write_output(
                         alive_subs, output_n, separator="\n"
@@ -92,3 +103,10 @@ class ProbeCommand(Command):
                 if output_x:
                     sep, file = ExportService.parse_ox(output_x)
                     ExportService.write_output(alive_subs, file, separator=sep)
+                if output_tech:
+                    from core.ui.renderers import _format_tech
+                    tech_lines = [
+                        f"{r.subdomain} [{_format_tech(getattr(r, 'tech', None))}]"
+                        for r in alive_rows
+                    ]
+                    ExportService.write_output(tech_lines, output_tech, separator="\n")
