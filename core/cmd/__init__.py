@@ -18,6 +18,31 @@ app = typer.Typer(
     context_settings=HELP_NAMES,
 )
 
+
+@app.callback(invoke_without_command=True)
+def main_callback(
+    ctx: typer.Context,
+    version_flag: bool = typer.Option(
+        False,
+        "-v",
+        "--version",
+        help="Show SubX version and exit.",
+        is_eager=True,
+    ),
+) -> None:
+    """SUBX — Subdomain Reconnaissance & Asset Management Framework."""
+    from core.ui.banner import banner, check_for_updates, get_version
+    from core.ui.console import console
+
+    if version_flag:
+        console.print(f"[bold cyan]subx-recon[/bold cyan] v[bold yellow]{get_version()}[/bold yellow]")
+        raise typer.Exit()
+
+    if ctx.invoked_subcommand is None:
+        banner()
+        check_for_updates()
+
+
 # Register all subcommands
 InitDbCommand().register(app)
 EnumCommand().register(app)
