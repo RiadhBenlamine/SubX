@@ -99,7 +99,7 @@ class HttpxTool(Tool):
 
         try:
             stdout, stderr = await self._execute(
-                ["-silent", "-json"],
+                ["-silent", "-json", "-tech-detect"],
                 input_data=input_data,
                 timeout=timeout,
             )
@@ -160,11 +160,13 @@ class HttpxTool(Tool):
             if raw.get("failed"):
                 results[host] = {"subdomain": host, "alive": False}
             else:
+                tech_list = raw.get("tech")
                 results[host] = {
                     "subdomain": host,
                     "alive": True,
                     "status_code": raw.get("status_code"),
                     "title": raw.get("title"),
+                    "tech": json.dumps(tech_list) if tech_list else None,
                 }
 
         # Anything we sent in but didn't get a response line for = dead.

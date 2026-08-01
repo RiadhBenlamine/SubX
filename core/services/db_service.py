@@ -17,11 +17,14 @@ class DbService(Service):
         domain: str,
         filter_plugin: str | None = None,
         new_since: datetime | None = None,
+        filter_tech: str | None = None,
     ) -> list[Subdomain]:
         """Fetch subdomains for a domain with optional filters."""
         async def _query(storage) -> list[Subdomain]:
             if filter_plugin:
                 return await storage.get_by_plugin(domain, filter_plugin)
+            if filter_tech:
+                return await storage.get_by_tech(domain, filter_tech)
             if new_since:
                 return await storage.get_new_since(domain, new_since)
             return await storage.get_all(domain)

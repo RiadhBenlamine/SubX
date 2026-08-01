@@ -23,6 +23,7 @@ class Subdomain(SQLModel, table=True):
     alive: bool | None = Field(default=None)
     status_code: int | None = Field(default=None)
     title: str | None = Field(default=None)
+    tech: str | None = Field(default=None)  # JSON list, e.g. '["Nginx","jQuery"]'
     first_seen: datetime = Field(default_factory=_utc_now)
     last_seen: datetime = Field(default_factory=_utc_now)
 

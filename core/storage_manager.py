@@ -310,6 +310,22 @@ class StorageManager:
             )
             return list(result.scalars().all())
 
+    async def get_by_tech(self, target: str, tech_name: str) -> list[Subdomain]:
+        """Fetch subdomains where the tech JSON column contains the given technology."""
+        self._ensure_initialized()
+        pattern = f"%{tech_name}%"
+        async with self._session() as session:
+            result = await session.execute(
+                select(Subdomain)
+                .where(
+                    Subdomain.target == target,
+                    Subdomain.tech.ilike(pattern),
+                )
+                .options(selectinload(Subdomain.sources))
+                .order_by(Subdomain.subdomain)
+            )
+            return list(result.scalars().all())
+
     async def get_new_since(self, target: str, since: datetime) -> list[Subdomain]:
         """Fetch stored subdomains for the target domain first seen on or after a given time."""
         self._ensure_initialized()
