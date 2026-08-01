@@ -32,6 +32,7 @@ def render_db_rows(rows: list) -> None:
         ("SOURCE",     {"style": "dim cyan",  "justify": "center"}),
         ("FIRST SEEN", {"style": "dim white", "justify": "right", "no_wrap": True}),
         ("LAST SEEN",  {"style": "dim white", "justify": "right", "no_wrap": True}),
+        ("LAST ALIVE", {"style": "dim white", "justify": "right", "no_wrap": True}),
     )
     for row in rows:
         sources_str = (
@@ -39,11 +40,17 @@ def render_db_rows(rows: list) -> None:
             if getattr(row, "sources", None)
             else row.source_plugin
         )
+        last_alive_str = (
+            row.last_seen_alive.strftime("%Y-%m-%d %H:%M")
+            if getattr(row, "last_seen_alive", None)
+            else "—"
+        )
         table.add_row(
             row.subdomain,
             sources_str,
             row.first_seen.strftime("%Y-%m-%d %H:%M"),
             row.last_seen.strftime("%Y-%m-%d %H:%M"),
+            last_alive_str,
         )
     console.print(table)
 
@@ -67,13 +74,14 @@ def _format_tech(tech_raw: str | list | None) -> str:
 
 
 def render_db_rows_web(rows: list) -> None:
-    """Render a table showing web status information (liveness, HTTP status, page title, tech)."""
+    """Render a table showing web status information (liveness, HTTP status, page title, tech, last alive)."""
     table = make_table(
-        ("SUBDOMAIN", {"style": "white"}),
-        ("ALIVE",     {"style": "white",     "justify": "center"}),
-        ("STATUS",    {"style": "green",     "justify": "right"}),
-        ("TITLE",     {"style": "dim white", "no_wrap": True, "overflow": "ellipsis"}),
-        ("TECH",      {"style": "cyan",      "no_wrap": True, "overflow": "ellipsis"}),
+        ("SUBDOMAIN",  {"style": "white"}),
+        ("ALIVE",      {"style": "white",     "justify": "center"}),
+        ("STATUS",     {"style": "green",     "justify": "right"}),
+        ("TITLE",      {"style": "dim white", "no_wrap": True, "overflow": "ellipsis"}),
+        ("TECH",       {"style": "cyan",      "no_wrap": True, "overflow": "ellipsis"}),
+        ("LAST ALIVE", {"style": "dim white", "justify": "right", "no_wrap": True}),
     )
     for row in rows:
         if row.alive is True:
@@ -85,12 +93,18 @@ def render_db_rows_web(rows: list) -> None:
         status_str = str(row.status_code) if row.status_code is not None else "—"
         title_str = row.title if row.title else "—"
         tech_str = _format_tech(getattr(row, "tech", None))
+        last_alive_str = (
+            row.last_seen_alive.strftime("%Y-%m-%d %H:%M")
+            if getattr(row, "last_seen_alive", None)
+            else "—"
+        )
         table.add_row(
             row.subdomain,
             alive_str,
             status_str,
             title_str,
             tech_str,
+            last_alive_str,
         )
     console.print(table)
 

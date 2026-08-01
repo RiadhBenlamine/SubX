@@ -153,6 +153,40 @@ async def test_storage_tech_and_alive():
     alive_subs = await storage.get_alive(target)
     assert len(alive_subs) == 1
     assert alive_subs[0].subdomain == "app.example.com"
+    assert alive_subs[0].last_seen_alive is not None
 
     await storage.close()
+
+
+@pytest.mark.anyio
+async def test_last_seen_alive_tracking():
+    storage = StorageManager("sqlite+aiosqlite:///:memory:")
+    await storage.init()
+
+    target = "example.com"
+    res = ProcessedResult(by_plugin={"ShodanPlugin": ["app.example.com"]})
+    await storage.save(res, target)
+
+    # 1. First probe: app.example.com is ALIVE
+    await storage.update_results(target, [{"subdomain": "app.example.com", "alive": True}])
+    subs = await storage.get_all(target)
+    assert subs[0].alive is True
+    first_alive_time = subs[0].last_seen_alive
+    assert first_alive_time is not None
+
+    # 2. Second probe later: app.example.com goes DOWN (alive=False)
+    await storage.update_results(target, [{"subdomain": "app.example.com", "alive": False}])
+    subs = await storage.get_all(target)
+    assert subs[0].alive is False
+    # last_seen_alive should be preserved from when it was live!
+    assert subs[0].last_seen_alive == first_alive_time
+
+    # 3. Verify get_dead returns the down subdomain
+    dead_subs = await storage.get_dead(target)
+    assert len(dead_subs) == 1
+    assert dead_subs[0].subdomain == "app.example.com"
+    assert dead_subs[0].last_seen_alive == first_alive_time
+
+    await storage.close()
+
 

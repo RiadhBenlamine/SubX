@@ -39,8 +39,10 @@ It also supports integrated network active checks (like HTTP liveness, response 
 * 🚀 **Asynchronous & Concurrent Execution**: Enumerates across all APIs concurrently using Python's `asyncio`.
 * 🔌 **Dynamic Plugin System**: Auto-discovers and registers passive query engines dropped inside the `plugins/` directory.
 * 🛡️ **Scope Isolation**: Prevents out-of-scope leakages by verifying targets against precise inclusions and exclusions defined in yaml format.
-* 🗄️ **Persistent Asset Database**: Incremental saving to local SQLite via SQLModel/SQLAlchemy. Keeps track of `first_seen` and `last_seen` timestamps.
-* ⚡ **Integrated Probe Engine**: Built-in orchestration for probing stored domains using external tools without leaving the CLI.
+* 🗄️ **Persistent Asset Database**: Incremental saving to local SQLite via SQLModel/SQLAlchemy. Keeps track of `first_seen`, `last_seen`, and `last_seen_alive` timestamps.
+* ⚡ **Integrated Probe & Tech Detection**: Built-in orchestration for probing stored domains using `httpx` with automatic web technology stack detection (e.g., Nginx, React, Cloudflare).
+* 🕒 **Historical Liveness Tracking**: Preserves `last_seen_alive` timestamps when domains go down, allowing historical records of when a host was last active.
+* 💻 **Cross-Platform Tool Engine**: Seamless binary resolution across Windows, Linux (Kali/Debian), and macOS. Automatically checks bundled binaries, system `PATH`, and `~/go/bin`.
 * 📊 **Rich Output Interfaces**: Visually appealing terminals powered by `Rich` tables, statuses, and panels.
 
 ---
@@ -136,19 +138,20 @@ subx enum -c ./config.yaml
 * `-c`, `--config` (Required): Path to your YAML or JSON config file.
 * `--save` / `--no-save`: Toggle database persistence (Defaults to `--save`).
 
-### 2. Probe Discovered Targets (`http-probe`)
-Filter, check, and update the HTTP status for subdomains discovered and saved for a target domain.
+### 2. Probe & Detect Technologies (`http-probe`)
+Check HTTP liveness, response status codes, page titles, and **web technology stacks** for subdomains stored in the database.
 
 ```bash
 subx http-probe -d example.com
 ```
 
-This commands reads the subdomains from the database, feeds them to `httpx` under the hood, and updates the database records with status codes (`200`, `404`, etc.), title tags, and liveness states (`alive = True`).
+This command reads subdomains from the database, runs `httpx` with `-tech-detect` under the hood, and updates the database records with status codes (`200`, `404`), title tags, detected technologies (e.g., `Nginx, React, Cloudflare`), and timestamps (`last_seen` and `last_seen_alive`).
 
 **Options:**
 * `-d`, `--domain` (Required): Target domain to probe.
 * `-oN <file>`: Output alive subdomain hostnames to a line-separated file.
-* `-oX '<separator>:<file>'`: Output alive subdomains with a custom separator (e.g. `';:alive.txt'` for semicolon separation).
+* `-oX '<separator>:<file>'`: Output alive subdomains with a custom separator (e.g. `';:alive.txt'`).
+* `-oT <file>`, `--output-tech <file>`: Save alive subdomains alongside their detected technology stack (e.g. `app.example.com [Nginx, React]`).
 
 ### 3. View & Query Assets (`db`)
 List, filter, query, export, or delete records from the local asset database.
@@ -164,16 +167,30 @@ Lists targets currently tracked in the database along with total subdomain count
 subx db -d example.com
 ```
 
-#### List Subdomains with HTTP Details
-If you've run the `http-probe` command, you can view the HTTP liveness data:
+#### List Subdomains with HTTP & Technology Details
+View web liveness status, HTTP response status, page titles, detected tech stack, and `LAST ALIVE` timestamps:
 ```bash
 subx db -d example.com --web
 ```
 
 #### Filter Results
-Filter domains that were discovered by a specific source engine:
+Filter domains discovered by a specific source engine:
 ```bash
 subx db -d example.com --filter-plugin ShodanPlugin
+```
+
+Filter subdomains running a specific technology (e.g. `Nginx`, `WordPress`, `Cloudflare`):
+```bash
+subx db -d example.com --filter-tech Nginx
+```
+
+Filter subdomains that are currently **ALIVE** or currently **DOWN**:
+```bash
+# Only live subdomains
+subx db -d example.com --alive
+
+# Only subdomains currently down (preserves LAST ALIVE timestamp)
+subx db -d example.com --down --web
 ```
 
 Filter subdomains discovered after a specific date:
@@ -184,7 +201,7 @@ subx db -d example.com --new-since 2026-06-01
 #### Custom Raw Queries
 Execute raw SQL queries against your assets:
 ```bash
-subx db -C "SELECT subdomain, alive, status_code FROM subdomain WHERE target='example.com' AND alive=1"
+subx db -C "SELECT subdomain, alive, status_code, tech, last_seen_alive FROM subdomain WHERE target='example.com' AND alive=1"
 ```
 
 #### Clean Up (Delete Target Records)
@@ -192,15 +209,17 @@ subx db -C "SELECT subdomain, alive, status_code FROM subdomain WHERE target='ex
 subx db -d example.com --delete
 ```
 
-#### Export Subdomains to Files
-Save the query results to a file:
+#### Export Subdomains & Tech to Files
+Save filtered query results to a file:
 ```bash
-subx db -d example.com -oN subs.txt
-```
+# Line-separated subdomains
+subx db -d example.com --alive -oN live_subs.txt
 
-Save with custom separators:
-```bash
-subx db -d example.com -oX ';:delimited_subs.txt'
+# Custom separator
+subx db -d example.com --filter-tech Nginx -oX ';:nginx_subs.txt'
+
+# Export subdomains with technology stack
+subx db -d example.com --web -oT tech_export.txt
 ```
 
 ### 4. Database Migrations (`dev-migrate`)

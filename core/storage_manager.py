@@ -78,7 +78,7 @@ class StorageManager:
 
         protected = {
             "id", "target", "subdomain", "source_plugin",
-            "first_seen", "last_seen",
+            "first_seen", "last_seen", "last_seen_alive",
         }
         writable_columns = {
             col.name for col in Subdomain.__table__.columns
@@ -102,6 +102,8 @@ class StorageManager:
                         if not values:
                             continue
                         values["last_seen"] = now
+                        if row.get("alive") is True:
+                            values["last_seen_alive"] = now
                         result = await session.execute(
                             update(Subdomain)
                             .where(
@@ -335,6 +337,21 @@ class StorageManager:
                 .where(
                     Subdomain.target == target,
                     Subdomain.alive == True,  # noqa: E712
+                )
+                .options(selectinload(Subdomain.sources))
+                .order_by(Subdomain.subdomain)
+            )
+            return list(result.scalars().all())
+
+    async def get_dead(self, target: str) -> list[Subdomain]:
+        """Fetch subdomains for the target domain that are verified dead (down)."""
+        self._ensure_initialized()
+        async with self._session() as session:
+            result = await session.execute(
+                select(Subdomain)
+                .where(
+                    Subdomain.target == target,
+                    Subdomain.alive == False,  # noqa: E712
                 )
                 .options(selectinload(Subdomain.sources))
                 .order_by(Subdomain.subdomain)

@@ -19,6 +19,7 @@ class DbService(Service):
         new_since: datetime | None = None,
         filter_tech: str | None = None,
         only_alive: bool = False,
+        only_dead: bool = False,
     ) -> list[Subdomain]:
         """Fetch subdomains for a domain with optional filters."""
         async def _query(storage) -> list[Subdomain]:
@@ -30,11 +31,15 @@ class DbService(Service):
                 rows = await storage.get_new_since(domain, new_since)
             elif only_alive:
                 rows = await storage.get_alive(domain)
+            elif only_dead:
+                rows = await storage.get_dead(domain)
             else:
                 rows = await storage.get_all(domain)
 
-            if only_alive and not (not filter_plugin and not filter_tech and not new_since and only_alive):
+            if only_alive and (filter_plugin or filter_tech or new_since):
                 rows = [r for r in rows if r.alive is True]
+            elif only_dead and (filter_plugin or filter_tech or new_since):
+                rows = [r for r in rows if r.alive is False]
 
             return rows
 

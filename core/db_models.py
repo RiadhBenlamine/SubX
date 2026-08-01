@@ -26,6 +26,7 @@ class Subdomain(SQLModel, table=True):
     tech: str | None = Field(default=None)  # JSON list, e.g. '["Nginx","jQuery"]'
     first_seen: datetime = Field(default_factory=_utc_now)
     last_seen: datetime = Field(default_factory=_utc_now)
+    last_seen_alive: datetime | None = Field(default=None)
 
     # Relationships
     sources: list["SubdomainSource"] = Relationship(

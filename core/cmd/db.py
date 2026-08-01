@@ -38,6 +38,9 @@ class DbCommand(Command):
         only_alive: bool = typer.Option(
             False, "--alive", "--only-alive", help="Show/filter only verified ALIVE subdomains."
         ),
+        only_dead: bool = typer.Option(
+            False, "--dead", "--down", "--only-dead", help="Show/filter only subdomains currently DOWN."
+        ),
         new_since: Optional[str] = typer.Option(
             None, "--new-since", help="Show subdomains first seen after YYYY-MM-DD."
         ),
@@ -78,6 +81,7 @@ class DbCommand(Command):
                 filter_plugin,
                 filter_tech,
                 only_alive,
+                only_dead,
                 new_since,
                 delete,
                 output_n,
@@ -95,6 +99,7 @@ class DbCommand(Command):
         filter_plugin: Optional[str],
         filter_tech: Optional[str],
         only_alive: bool,
+        only_dead: bool,
         new_since: Optional[str],
         delete: bool,
         output_n: Optional[str],
@@ -112,7 +117,7 @@ class DbCommand(Command):
             return
 
         if not domain:
-            if any([delete, filter_plugin, filter_tech, only_alive, new_since, output_n, output_x, output_tech, web]):
+            if any([delete, filter_plugin, filter_tech, only_alive, only_dead, new_since, output_n, output_x, output_tech, web]):
                 error("Filters and output flags require -d <domain>.")
             await self._db_summary(service)
             return
@@ -130,6 +135,7 @@ class DbCommand(Command):
             filter_plugin,
             filter_tech,
             only_alive,
+            only_dead,
             new_since,
             output_n,
             output_x,
@@ -165,6 +171,7 @@ class DbCommand(Command):
         filter_plugin: Optional[str],
         filter_tech: Optional[str],
         only_alive: bool,
+        only_dead: bool,
         new_since: Optional[str],
         output_n: Optional[str],
         output_x: Optional[str],
@@ -178,6 +185,8 @@ class DbCommand(Command):
             filters_str.append(f"Tech : [bold white]{filter_tech}[/bold white]")
         if only_alive:
             filters_str.append("Filter : [bold green]Alive only[/bold green]")
+        if only_dead:
+            filters_str.append("Filter : [bold red]Down only[/bold red]")
         if new_since:
             try:
                 since_dt = datetime.strptime(new_since, "%Y-%m-%d")
@@ -196,6 +205,7 @@ class DbCommand(Command):
             filter_tech=filter_tech,
             new_since=since_dt,
             only_alive=only_alive,
+            only_dead=only_dead,
         )
 
         console.print()
