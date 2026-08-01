@@ -2,6 +2,11 @@
 config.yaml
 *.local.yaml
 *.secret.yaml
+.env
+.env.*
+*.env
+.pypirc
+secrets.json
 *.db
 subx.backup-*.db
 projects/

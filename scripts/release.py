@@ -124,18 +124,42 @@ def build_packages(new_version: str):
     run_cmd([sys.executable, "-m", "twine", "check", f"dist/subx_recon-{new_version}*"])
 
 
+def load_env_credentials() -> dict[str, str]:
+    """Load credentials from local .env or global ~/.config/subx/.env if present."""
+    from dotenv import dotenv_values
+    creds = {}
+    candidates = [
+        ROOT_DIR / ".env",
+        Path.home() / ".config" / "subx" / ".env",
+    ]
+    for c in candidates:
+        if c.exists():
+            for key, val in dotenv_values(c).items():
+                if val:
+                    creds[key] = val
+    return creds
+
+
 def upload_to_pypi(new_version: str):
     print("🚀 Uploading package to PyPI...")
     
     env = os.environ.copy()
-    if not env.get("TWINE_PASSWORD") and not env.get("PYPI_TOKEN"):
-        # Check if PyPI token is saved or ask user
-        pypi_token = input("Enter PyPI API Token (pypi-...): ").strip()
-        if not pypi_token:
-            print("Aborting upload: No PyPI token provided.")
-            sys.exit(1)
-        env["TWINE_USERNAME"] = "__token__"
-        env["TWINE_PASSWORD"] = pypi_token
+    creds = load_env_credentials()
+    for k, v in creds.items():
+        env[k] = v
+
+    if not env.get("TWINE_PASSWORD"):
+        pypi_token = env.get("PYPI_TOKEN")
+        if pypi_token:
+            env["TWINE_USERNAME"] = "__token__"
+            env["TWINE_PASSWORD"] = pypi_token
+        else:
+            pypi_token = input("Enter PyPI API Token (pypi-...): ").strip()
+            if not pypi_token:
+                print("Aborting upload: No PyPI token provided.")
+                sys.exit(1)
+            env["TWINE_USERNAME"] = "__token__"
+            env["TWINE_PASSWORD"] = pypi_token
     elif not env.get("TWINE_USERNAME"):
         env["TWINE_USERNAME"] = "__token__"
 
@@ -156,7 +180,14 @@ def git_tag_and_push(new_version: str):
     tag = f"v{new_version}"
     print(f"🏷️  Creating Git commit and tag '{tag}'...")
 
-    run_cmd(["git", "add", "."])
+    # Security verification: Ensure secret files are ignored
+    run_cmd(["git", "add", "pyproject.toml", "scripts/build_deb.py", "README.md", "debian/", ".gitignore"])
+
+    staged = subprocess.run(["git", "diff", "--cached", "--name-only"], capture_output=True, text=True, cwd=str(ROOT_DIR)).stdout
+    if ".env" in staged or ".pypirc" in staged:
+        print("⚠️  CRITICAL SECURITY PREVENTATIVE ACTION: Secret file detected in git index! Removing from staging...")
+        subprocess.run(["git", "rm", "--cached", "-f", ".env", ".pypirc"], capture_output=True, cwd=str(ROOT_DIR))
+
     run_cmd(["git", "commit", "-m", f"bump: version {new_version}"])
     run_cmd(["git", "tag", tag])
 
