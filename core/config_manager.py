@@ -79,6 +79,20 @@ class ConfigManager:
             if val:
                 self.api_keys[key.upper()] = str(val)
 
+        db_cfg = data.get("db", {})
+        if isinstance(db_cfg, dict) and db_cfg:
+            import os
+            if "host" in db_cfg:
+                os.environ["SUBX_DB_HOST"] = str(db_cfg["host"])
+            if "user" in db_cfg or "username" in db_cfg:
+                os.environ["SUBX_DB_USER"] = str(db_cfg.get("user") or db_cfg.get("username"))
+            if "password" in db_cfg or "pass" in db_cfg:
+                os.environ["SUBX_DB_PASS"] = str(db_cfg.get("password") or db_cfg.get("pass"))
+            if "port" in db_cfg:
+                os.environ["SUBX_DB_PORT"] = str(db_cfg["port"])
+            if "dbname" in db_cfg or "database" in db_cfg:
+                os.environ["SUBX_DB_NAME"] = str(db_cfg.get("dbname") or db_cfg.get("database"))
+
     @staticmethod
     def _parse_list(data: dict, key: str) -> list[str]:
         value = data.get(key, [])

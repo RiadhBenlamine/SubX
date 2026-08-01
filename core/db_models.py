@@ -12,6 +12,7 @@ def _utc_now() -> datetime:
 class Subdomain(SQLModel, table=True):
     """Database model mapping discovered subdomains to target domains and web status."""
 
+    __tablename__ = "subx_subdomain"
     __table_args__ = (
         UniqueConstraint("target", "subdomain", name="uq_target_subdomain"),
     )
@@ -39,7 +40,7 @@ class Subdomain(SQLModel, table=True):
 class SubdomainSource(SQLModel, table=True):
     """Join database model mapping subdomains to discovery plugin sources."""
 
-    __tablename__ = "subdomain_sources"
+    __tablename__ = "subx_subdomain_sources"
     __table_args__ = (
         UniqueConstraint(
             "subdomain_id", "source_plugin", name="uq_subdomain_id_source_plugin"
@@ -47,7 +48,7 @@ class SubdomainSource(SQLModel, table=True):
     )
 
     id: int | None = Field(default=None, primary_key=True)
-    subdomain_id: int = Field(foreign_key="subdomain.id", index=True)
+    subdomain_id: int = Field(foreign_key="subx_subdomain.id", index=True)
     source_plugin: str
 
     subdomain: Subdomain = Relationship(back_populates="sources")

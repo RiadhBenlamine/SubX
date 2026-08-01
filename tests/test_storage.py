@@ -58,7 +58,7 @@ async def test_migration_path(tmp_path):
     conn = sqlite3.connect(str(db_file))
     cursor = conn.cursor()
     cursor.execute("""
-    CREATE TABLE subdomain (
+    CREATE TABLE subx_subdomain (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         target TEXT NOT NULL,
         subdomain TEXT NOT NULL,
@@ -75,12 +75,12 @@ async def test_migration_path(tmp_path):
     later_str = "2026-07-13 19:00:00"
     
     cursor.execute("""
-    INSERT INTO subdomain (target, subdomain, source_plugin, first_seen, last_seen)
+    INSERT INTO subx_subdomain (target, subdomain, source_plugin, first_seen, last_seen)
     VALUES ('example.com', 'dup.example.com', 'PluginA', ?, ?);
     """, (now_str, now_str))
     
     cursor.execute("""
-    INSERT INTO subdomain (target, subdomain, source_plugin, first_seen, last_seen)
+    INSERT INTO subx_subdomain (target, subdomain, source_plugin, first_seen, last_seen)
     VALUES ('example.com', 'dup.example.com', 'PluginB', ?, ?);
     """, (later_str, later_str))
     

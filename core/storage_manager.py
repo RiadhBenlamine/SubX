@@ -22,12 +22,23 @@ DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///subx.db"
 
 def normalize_db_url(db_url: str | None = None) -> str:
     """Resolve and normalize database URL for SQLite or PostgreSQL engines."""
-    url = (
-        db_url
-        or os.environ.get("DATABASE_URL")
-        or os.environ.get("SUBX_DB_URL")
-        or DEFAULT_DATABASE_URL
-    )
+    if db_url:
+        url = db_url
+    elif os.environ.get("DATABASE_URL"):
+        url = os.environ["DATABASE_URL"]
+    elif os.environ.get("SUBX_DB_URL"):
+        url = os.environ["SUBX_DB_URL"]
+    elif os.environ.get("SUBX_DB_HOST") or os.environ.get("PGHOST"):
+        host = os.environ.get("SUBX_DB_HOST") or os.environ.get("PGHOST")
+        user = os.environ.get("SUBX_DB_USER") or os.environ.get("PGUSER") or "postgres"
+        password = os.environ.get("SUBX_DB_PASS") or os.environ.get("SUBX_DB_PASSWORD") or os.environ.get("PGPASSWORD") or ""
+        port = os.environ.get("SUBX_DB_PORT") or os.environ.get("PGPORT") or "5432"
+        dbname = os.environ.get("SUBX_DB_NAME") or os.environ.get("PGDATABASE") or "subx"
+        auth = f"{user}:{password}@" if password else f"{user}@"
+        url = f"postgresql+asyncpg://{auth}{host}:{port}/{dbname}"
+    else:
+        url = DEFAULT_DATABASE_URL
+
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
     elif url.startswith("postgresql://") and "+asyncpg" not in url and "+psycopg" not in url:
@@ -51,10 +62,14 @@ class StorageManager:
         self._ro_engine = None
 
     async def init(self) -> None:
-        """Initialize connection engines and create schema tables if missing."""
+        """Initialize connection engines, create database 'subx' on PG if missing, and create schema tables."""
         async with self._init_lock:
             if self._initialized:
                 return
+
+            if self.engine.dialect.name == "postgresql":
+                await self._ensure_pg_database_exists()
+
             try:
                 async with self.engine.begin() as conn:
                     await conn.run_sync(SQLModel.metadata.create_all)
@@ -62,6 +77,30 @@ class StorageManager:
             except SQLAlchemyError as e:
                 logger.error("Failed to initialize database: %s", e)
                 raise
+
+    async def _ensure_pg_database_exists(self) -> None:
+        """Ensure PostgreSQL database 'subx' exists on the target server before table creation."""
+        url_obj = self.engine.url
+        dbname = url_obj.database or "subx"
+        if not dbname or dbname in ("postgres", "template1"):
+            return
+
+        admin_url = url_obj.set(database="postgres")
+        admin_engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
+        try:
+            async with admin_engine.connect() as conn:
+                res = await conn.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :dbname"),
+                    {"dbname": dbname},
+                )
+                if not res.scalar():
+                    logger.info("First run — creating PostgreSQL database '%s'...", dbname)
+                    await conn.execute(text(f'CREATE DATABASE "{dbname}"'))
+                    logger.info("Successfully created database '%s'.", dbname)
+        except Exception as e:
+            logger.debug("Automatic PG database check/creation skipped: %s", e)
+        finally:
+            await admin_engine.dispose()
 
     async def update_results(
         self, target: str, results: list[dict]
@@ -143,28 +182,31 @@ class StorageManager:
             shutil.copy2(db_path, backup_path)
             logger.info("Backup created: %s", backup_path)
 
-        # 1. Create any missing tables (like subdomain_sources)
+        table_name = "subx_subdomain"
+        sources_table = "subx_subdomain_sources"
+
+        # 1. Create any missing tables (like subx_subdomain_sources)
         async with self.engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
 
         added: list[str] = []
 
-        # 2. Add any new columns to subdomain first
+        # 2. Add any new columns to subx_subdomain first
         async with self.engine.connect() as conn:
             existing_cols = await conn.run_sync(
                 lambda sync_conn: {
                     col["name"]
-                    for col in inspect(sync_conn).get_columns("subdomain")
+                    for col in inspect(sync_conn).get_columns(table_name)
                 }
             )
 
-            model_table = SQLModel.metadata.tables["subdomain"]
+            model_table = SQLModel.metadata.tables[table_name]
             for col in model_table.columns:
                 if col.name in existing_cols:
                     continue
 
                 col_type = col.type.compile(dialect=self.engine.dialect)
-                statement = f'ALTER TABLE subdomain ADD COLUMN "{col.name}" {col_type}'
+                statement = f'ALTER TABLE {table_name} ADD COLUMN "{col.name}" {col_type}'
                 await conn.execute(text(statement))
                 added.append(col.name)
                 logger.info("Added column: %s (%s)", col.name, col_type)
@@ -175,7 +217,7 @@ class StorageManager:
         has_unique_constraint = False
         async with self.engine.connect() as conn:
             indexes = await conn.run_sync(
-                lambda sync_conn: inspect(sync_conn).get_indexes("subdomain")
+                lambda sync_conn: inspect(sync_conn).get_indexes(table_name)
             )
             for idx in indexes:
                 is_target_subdomain = set(idx.get("column_names", [])) == {"target", "subdomain"}
@@ -185,7 +227,7 @@ class StorageManager:
 
             if not has_unique_constraint:
                 unique_cons = await conn.run_sync(
-                    lambda sync_conn: inspect(sync_conn).get_unique_constraints("subdomain")
+                    lambda sync_conn: inspect(sync_conn).get_unique_constraints(table_name)
                 )
                 for uc in unique_cons:
                     if set(uc.get("column_names", [])) == {"target", "subdomain"}:
@@ -195,11 +237,11 @@ class StorageManager:
         # 4. If missing unique constraint, recreate table and migrate data
         if not has_unique_constraint:
             logger.info(
-                "Migrating subdomain table to add unique constraint on (target, subdomain)"
+                f"Migrating {table_name} table to add unique constraint on (target, subdomain)"
             )
             async with self.engine.connect() as conn:
                 existing_cols_list = await conn.run_sync(
-                    lambda sync_conn: inspect(sync_conn).get_columns("subdomain")
+                    lambda sync_conn: inspect(sync_conn).get_columns(table_name)
                 )
 
             col_defs = []
@@ -213,7 +255,7 @@ class StorageManager:
                     col_defs.append(f'"{col_name}" {col_type} {nullable}')
             col_defs.append("UNIQUE(target, subdomain)")
 
-            ddl_create = f"CREATE TABLE subdomain_new ({', '.join(col_defs)});"
+            ddl_create = f"CREATE TABLE {table_name}_new ({', '.join(col_defs)});"
 
             select_fields = []
             for col in existing_cols_list:
@@ -233,33 +275,33 @@ class StorageManager:
             select_fields_str = ", ".join(select_fields)
 
             dedup_insert = f"""
-            INSERT INTO subdomain_new ({col_names_str})
+            INSERT INTO {table_name}_new ({col_names_str})
             SELECT {select_fields_str}
-            FROM subdomain
+            FROM {table_name}
             GROUP BY target, subdomain;
             """  # nosec B608
 
-            sources_insert = """
-            INSERT OR IGNORE INTO subdomain_sources (subdomain_id, source_plugin)
+            sources_insert = f"""
+            INSERT OR IGNORE INTO {sources_table} (subdomain_id, source_plugin)
             SELECT n.id, o.source_plugin
-            FROM subdomain_new n
-            JOIN subdomain o ON n.target = o.target AND n.subdomain = o.subdomain;
+            FROM {table_name}_new n
+            JOIN {table_name} o ON n.target = o.target AND n.subdomain = o.subdomain;
             """
 
             async with self.engine.begin() as conn:
                 await conn.execute(text(ddl_create))
                 await conn.execute(text(dedup_insert))
                 await conn.execute(text(sources_insert))
-                await conn.execute(text("DROP TABLE subdomain;"))
-                await conn.execute(text("ALTER TABLE subdomain_new RENAME TO subdomain;"))
+                await conn.execute(text(f"DROP TABLE {table_name};"))
+                await conn.execute(text(f"ALTER TABLE {table_name}_new RENAME TO {table_name};"))
                 await conn.execute(
-                    text("CREATE INDEX ix_subdomain_target ON subdomain (target);")
+                    text(f"CREATE INDEX ix_{table_name}_target ON {table_name} (target);")
                 )
                 await conn.execute(
-                    text("CREATE INDEX ix_subdomain_subdomain ON subdomain (subdomain);")
+                    text(f"CREATE INDEX ix_{table_name}_subdomain ON {table_name} (subdomain);")
                 )
 
-            logger.info("Migrated subdomain table successfully.")
+            logger.info("Migrated %s table successfully.", table_name)
             added.append("uq_target_subdomain_constraint")
 
         return added
