@@ -1,4 +1,6 @@
 import json
+import subprocess
+from pathlib import Path
 
 from core.logger import logger
 from core.tool import (Tool, ToolExecutionError, ToolNotFoundError,
@@ -13,6 +15,40 @@ class HttpxTool(Tool):
     """
 
     TOOL_NAME = "httpx"
+
+    def _validate_tool_path(self, path: Path) -> None:
+        """Reject the Python ``httpx`` CLI (pip-installed name collision).
+
+        ProjectDiscovery's Go binary prints 'projectdiscovery' somewhere in
+        its ``-version`` output.  The Python ``httpx`` CLI (from the httpx
+        HTTP-client library) does not, and it also doesn't understand
+        ``-version`` at all — it exits non-zero.
+        """
+        try:
+            result = subprocess.run(
+                [str(path), "-version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            combined = result.stdout + result.stderr
+            if "projectdiscovery" not in combined.lower():
+                raise ToolNotFoundError(
+                    f"'{path}' does not appear to be ProjectDiscovery's httpx "
+                    f"(got: {combined.strip()[:120]}). "
+                    f"Install the correct httpx via `go install -v "
+                    f"github.com/projectdiscovery/httpx/cmd/httpx@latest`."
+                )
+        except FileNotFoundError:
+            raise ToolNotFoundError(
+                f"httpx binary not found at '{path}'."
+            )
+        except subprocess.TimeoutExpired:
+            # If it hangs on -version it's probably not the right binary
+            raise ToolNotFoundError(
+                f"'{path}' timed out on `-version` — likely not "
+                f"ProjectDiscovery's httpx."
+            )
 
     # httpx defaults to 50 concurrent workers and ~10s per request before
     # giving up on a single host. Budget generously per host so large lists

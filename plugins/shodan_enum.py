@@ -36,6 +36,9 @@ class ShodanPlugin(Plugin):
             raise PluginUnavailableError(f"Shodan connection error: {e}") from e
 
     async def run(self, domain: str):  # pylint: disable=too-many-locals
+        if self.tripped:
+            raise PluginRateLimitError("ShodanPlugin skipped — circuit tripped.")
+
         try:
             api = Shodan(self.config["SHODAN_API"])
         except Exception as e:  # pylint: disable=broad-exception-caught

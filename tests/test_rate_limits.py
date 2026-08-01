@@ -42,26 +42,48 @@ async def test_safe_client_session_auth_error():
                     pass
 
 @pytest.mark.anyio
-async def test_safe_client_session_rate_limit_retry():
+async def test_safe_client_session_rate_limit_immediate():
+    """HTTP 429 should immediately raise PluginRateLimitError — no retries."""
     class DummyPlugin(Plugin):
         async def run(self, domain: str):
             pass
-            
+
     plugin = DummyPlugin({})
-    
+
     resp_429 = AsyncMock()
     resp_429.status = 429
-    resp_429.headers = {"Retry-After": "0"}
-    
-    resp_200 = AsyncMock()
-    resp_200.status = 200
-    
-    responses = [resp_429, resp_429, resp_200]
-    
+    resp_429.headers = {}
+
+    call_count = 0
+
     async def mock_call(*args, **kwargs):
-        return responses.pop(0)
-    
+        nonlocal call_count
+        call_count += 1
+        return resp_429
+
     with patch("aiohttp.ClientSession.request", mock_call):
         async with plugin.session() as session:
-            async with session.get("https://example.com") as resp:
-                assert resp.status == 200
+            with pytest.raises(PluginRateLimitError):
+                async with session.get("https://example.com"):
+                    pass
+
+    # Should have been called exactly once — no retries
+    assert call_count == 1
+
+
+@pytest.mark.anyio
+async def test_circuit_breaker():
+    """Tripping the circuit should set the tripped flag."""
+    class DummyPlugin(Plugin):
+        async def run(self, domain: str):
+            pass
+
+    plugin = DummyPlugin({})
+    assert not plugin.tripped
+
+    plugin.trip_circuit("rate limited")
+    assert plugin.tripped
+
+    # Tripping again should be a no-op (no error)
+    plugin.trip_circuit("another reason")
+    assert plugin.tripped

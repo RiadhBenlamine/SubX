@@ -3,6 +3,7 @@
 DEV_DOCS.md
 *.db
 /bin/httpx/*
+logs/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

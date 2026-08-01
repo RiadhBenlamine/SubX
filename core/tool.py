@@ -33,26 +33,44 @@ class Tool(ABC):
         """
         Resolve the path to a tool binary.
 
-        On Windows, looks for a bundled binary at BASE_DIR/bin/<name>/<name>.exe.
-        On Linux/macOS, looks it up on the system PATH (go install / apt installs).
+        Resolution order:
+          1. Bundled binary at BASE_DIR/bin/<name>/<name>[.exe]  (any OS)
+          2. System PATH lookup via shutil.which                  (fallback)
 
-        Raises ToolNotFoundError if the binary can't be found either way.
+        After resolution the path is handed to _validate_tool_path() so
+        subclasses can reject name-colliding binaries (e.g. the Python
+        ``httpx`` CLI vs. ProjectDiscovery's Go ``httpx``).
+
+        Raises ToolNotFoundError if no valid binary can be found.
         """
-        if self._get_os() == "win32":
-            bundled = self.BASE_DIR / "bin" / name / f"{name}.exe"
-            if bundled.is_file():
-                return bundled
-            raise ToolNotFoundError(
-                f"Could not locate '{name}' at expected bundled path '{bundled}'."
-            )
+        # 1. Bundled binary (works on every OS; .exe suffix on Windows)
+        ext = ".exe" if self._get_os() == "win32" else ""
+        bundled = self.BASE_DIR / "bin" / name / f"{name}{ext}"
+        if bundled.is_file():
+            self._validate_tool_path(bundled)
+            return bundled
 
+        # 2. Fallback: system PATH
         on_path = shutil.which(name)
         if on_path:
-            return Path(on_path)
+            resolved = Path(on_path)
+            self._validate_tool_path(resolved)
+            return resolved
 
         raise ToolNotFoundError(
-            f"Could not locate '{name}' on PATH. Install it via `go install` or apt."
+            f"Could not locate '{name}'. Checked bundled path '{bundled}' "
+            f"and system PATH. Install it via `go install` or apt."
         )
+
+    def _validate_tool_path(self, path: Path) -> None:
+        """Optional hook for subclasses to reject an incorrect binary.
+
+        Called by _resolve_tool_path after finding a candidate. Override in
+        subclasses to inspect the binary (e.g. run ``<binary> -version``) and
+        raise ToolNotFoundError if it is not the expected tool.
+
+        The default implementation accepts any existing file.
+        """
 
     def _tool_exists(self, name: str) -> bool:
         """Cheap existence check — no subprocess spawn needed."""

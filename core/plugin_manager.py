@@ -53,31 +53,64 @@ class PluginManager:
         )
 
     async def execute_plugins(self, target: str) -> list[PluginResult]:
-        """Execute all loaded plugins concurrently against a target domain."""
+        """Execute all loaded plugins concurrently against a target domain.
+
+        Plugins whose circuit breaker has been tripped are skipped entirely —
+        no network call is made. After execution, any rate-limit or auth
+        failure will trip the offending plugin's circuit so it is skipped for
+        all subsequent domains.
+        """
         if not self.loaded_plugins:
             logger.warning("No plugins loaded. Call load_plugins() first.")
             return []
 
-        plugins = self.loaded_plugins
-        names = [p.__class__.__name__ for p in plugins]
+        results: list[PluginResult] = []
+
+        # Separate active plugins from already-tripped ones
+        active: list[Plugin] = []
+        for plugin in self.loaded_plugins:
+            name = plugin.__class__.__name__
+            if plugin.tripped:
+                logger.debug("[%s] skipped — circuit already tripped.", name)
+                results.append(
+                    PluginResult(
+                        plugin_name=name,
+                        subdomains=[],
+                        error=PluginRateLimitError(
+                            f"{name} skipped — circuit tripped."
+                        ),
+                        status="rate_limited",
+                    )
+                )
+            else:
+                active.append(plugin)
+
+        if not active:
+            return results
+
+        # Run only active plugins concurrently
         outcomes = await asyncio.gather(
-            *(p.run(target) for p in plugins),
+            *(p.run(target) for p in active),
             return_exceptions=True,
         )
 
-        results: list[PluginResult] = []
-        for name, outcome in zip(names, outcomes):
+        for plugin, outcome in zip(active, outcomes):
+            name = plugin.__class__.__name__
             if isinstance(outcome, Exception):
                 logger.error("[%s] failed: %s", name, outcome)
                 status = "unavailable"
-                subdomains = []
+                subdomains: list[str] = []
+
                 if isinstance(outcome, PluginAuthError):
                     status = "auth_error"
+                    plugin.trip_circuit(str(outcome))
                 elif isinstance(outcome, PluginRateLimitError):
-                    status = "partial"
+                    status = "rate_limited"
                     subdomains = getattr(outcome, "partial_subdomains", [])
+                    plugin.trip_circuit(str(outcome))
                 elif isinstance(outcome, PluginUnavailableError):
                     status = "unavailable"
+
                 results.append(
                     PluginResult(
                         plugin_name=name,

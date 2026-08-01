@@ -48,9 +48,12 @@ class EnumService(Service):
             await storage.init()
 
         try:
-            domain_results = await asyncio.gather(
-                *(self._run_domain(pm, processor, domain) for domain in scope)
-            )
+            # Run domains sequentially so circuit-breaker state propagates:
+            # if a plugin trips on domain 1, it is skipped for domains 2–N.
+            domain_results = []
+            for domain in scope:
+                dr = await self._run_domain(pm, processor, domain)
+                domain_results.append(dr)
 
             for domain, processed in zip(scope, domain_results):
                 new_count = 0

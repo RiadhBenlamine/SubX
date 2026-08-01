@@ -68,25 +68,17 @@ class SafeRequestContext:
             try:
                 resp = await self.session.request(self.method, self.url, **self.kwargs)
                 if resp.status in (401, 403):
+                    await resp.release()
                     raise PluginAuthError(
                         f"HTTP {resp.status} - Authentication/Authorization failure."
                     )
                 if resp.status == 429:
-                    if attempt == attempts:
-                        raise PluginRateLimitError(
-                            f"HTTP 429 - Rate limit exceeded after {attempts} attempts."
-                        )
-                    retry_after = resp.headers.get("Retry-After") or resp.headers.get(
-                        "X-RateLimit-Reset"
+                    await resp.release()
+                    raise PluginRateLimitError(
+                        "HTTP 429 - Rate limit exceeded."
                     )
-                    try:
-                        sleep_time = int(retry_after) if retry_after else backoff
-                    except ValueError:
-                        sleep_time = backoff
-                    await asyncio.sleep(sleep_time)
-                    backoff *= 2.0
-                    continue
                 if resp.status >= 500:
+                    await resp.release()
                     if attempt == attempts:
                         raise PluginUnavailableError(
                             f"HTTP {resp.status} - Source is temporarily unavailable."
@@ -147,6 +139,7 @@ class Plugin(ABC):
 
     def __init__(self, config: dict):
         self.config = config
+        self._tripped = False
 
         rate_limits = config.get("rate_limits", {}) or {}
         limit = None
@@ -161,6 +154,19 @@ class Plugin(ABC):
         self.rate_limiter = (
             TokenBucketRateLimiter(float(limit)) if limit is not None else None
         )
+
+    @property
+    def tripped(self) -> bool:
+        """Return True if this plugin's circuit breaker has been tripped."""
+        return self._tripped
+
+    def trip_circuit(self, reason: str = "") -> None:
+        """Trip the circuit breaker so this plugin is skipped for subsequent domains."""
+        if not self._tripped:
+            self.logger.warning(
+                "Circuit tripped — skipping future calls. %s", reason
+            )
+            self._tripped = True
 
     @property
     def required_keys(self) -> list[str]:

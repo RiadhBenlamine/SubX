@@ -121,8 +121,8 @@ def render_enum_results(
             subs = processed.by_plugin.get(plugin_name, [])
             if status == "ok":
                 status_str = "[green]ok[/green]"
-            elif status == "partial":
-                status_str = "[yellow]partial (throttled)[/yellow]"
+            elif status in ("partial", "rate_limited"):
+                status_str = "[yellow]rate limited[/yellow]"
             elif status == "auth_error":
                 status_str = "[red]auth error[/red]"
             else:
