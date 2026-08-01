@@ -42,6 +42,7 @@ It also supports integrated network active checks (like HTTP liveness, response 
 * 🗄️ **Persistent Asset Database**: Incremental saving to local SQLite via SQLModel/SQLAlchemy. Keeps track of `first_seen`, `last_seen`, and `last_seen_alive` timestamps.
 * ⚡ **Integrated Probe & Tech Detection**: Built-in orchestration for probing stored domains using `httpx` with automatic web technology stack detection (e.g., Nginx, React, Cloudflare).
 * 🕒 **Historical Liveness Tracking**: Preserves `last_seen_alive` timestamps when domains go down, allowing historical records of when a host was last active.
+* 📁 **Structured Plain-Text Project Layout**: Automatically exports organized plain-text recon directories per target domain (`<domain>/recon/subdomains.txt`, `alive.txt`, `dead.txt`, `techs.txt`, `ips.txt`, `status.txt`, `sources.txt`).
 * 💻 **Cross-Platform Tool Engine**: Seamless binary resolution across Windows, Linux (Kali/Debian), and macOS. Automatically checks bundled binaries, system `PATH`, and `~/go/bin`.
 * 📊 **Rich Output Interfaces**: Visually appealing terminals powered by `Rich` tables, statuses, and panels.
 
@@ -222,7 +223,41 @@ subx db -d example.com --filter-tech Nginx -oX ';:nginx_subs.txt'
 subx db -d example.com --web -oT tech_export.txt
 ```
 
-### 4. Database Migrations (`dev-migrate`)
+### 4. Project Directory Export (`project` & `--project`)
+Set up a structured, plain-text recon directory layout for your target domains.
+
+```bash
+subx project -d example.com
+```
+
+This creates the following organized folder structure on disk:
+```
+projects/
+  └── example.com/
+        └── recon/
+              ├── subdomains.txt   # All discovered subdomains
+              ├── alive.txt        # Verified ALIVE subdomains
+              ├── dead.txt         # Subdomains currently DOWN
+              ├── techs.txt        # Subdomains with detected tech stack
+              ├── status.txt       # Subdomains with HTTP status & title
+              ├── ips.txt          # Subdomains with IP addresses
+              └── sources.txt      # Subdomains with discovery sources
+```
+
+You can also pass `--project` / `-p` during `enum`, `http-probe`, or `db` commands to automatically generate/sync the project folder structure:
+```bash
+# Auto-generate project folder after passive enumeration
+subx enum -c ./config.yaml --project
+
+# Auto-generate project folder after HTTP probing
+subx http-probe -d example.com --project
+```
+
+**Options:**
+* `-d`, `--domain` (Required): Target domain name.
+* `-o`, `--output-dir`: Base directory for projects (Default: `projects`).
+
+### 5. Database Migrations (`dev-migrate`)
 As SubX development progresses and database models change, migrate your database schema to keep it up to date:
 
 ```bash

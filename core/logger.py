@@ -27,7 +27,7 @@ class DeduplicatingHandler(logging.Handler):
         self._counts: Counter = Counter()
         self._stream_handler = logging.StreamHandler(stream)
 
-    def setFormatter(self, fmt):  # noqa: N802 – overrides stdlib
+    def setFormatter(self, fmt):
         super().setFormatter(fmt)
         self._stream_handler.setFormatter(fmt)
 
@@ -58,7 +58,7 @@ def setup_logger(level: int = logging.ERROR) -> None:
     Console : shows each unique error/warning only once.
     File    : captures every message with timestamps for debugging.
     """
-    global _dedup_handler  # noqa: PLW0603
+    global _dedup_handler
 
     # ── Console (deduplicated) ──────────────────────────────────
     _dedup_handler = DeduplicatingHandler()

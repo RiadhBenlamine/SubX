@@ -24,6 +24,7 @@ class Subdomain(SQLModel, table=True):
     status_code: int | None = Field(default=None)
     title: str | None = Field(default=None)
     tech: str | None = Field(default=None)  # JSON list, e.g. '["Nginx","jQuery"]'
+    ip: str | None = Field(default=None)  # IP address or comma-separated IPs
     first_seen: datetime = Field(default_factory=_utc_now)
     last_seen: datetime = Field(default_factory=_utc_now)
     last_seen_alive: datetime | None = Field(default=None)

@@ -4,6 +4,7 @@ from core.services.enum_service import EnumResult, EnumService
 from core.services.export_service import ExportService
 from core.services.migrate_service import MigrateService
 from core.services.probe_service import ProbeService
+from core.services.project_service import ProjectService, ProjectSummary
 
 __all__ = [
     "DbService",
@@ -12,4 +13,6 @@ __all__ = [
     "ExportService",
     "MigrateService",
     "ProbeService",
+    "ProjectService",
+    "ProjectSummary",
 ]

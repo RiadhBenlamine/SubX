@@ -8,8 +8,7 @@ from pathlib import Path
 from sqlalchemy import delete, func, inspect, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import (AsyncEngine, AsyncSession,
-                                    create_async_engine)
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import selectinload, sessionmaker
 from sqlmodel import SQLModel, select
 
@@ -88,31 +87,30 @@ class StorageManager:
         chunk_size = 450
         now = datetime.now(tz=timezone.utc)
 
-        async with self._session() as session:
-            async with session.begin():
-                for i in range(0, len(results), chunk_size):
-                    batch = results[i : i + chunk_size]
-                    for row in batch:
-                        sub = row.get("subdomain")
-                        if not sub:
-                            continue
-                        values = {
-                            k: v for k, v in row.items() if k in writable_columns
-                        }
-                        if not values:
-                            continue
-                        values["last_seen"] = now
-                        if row.get("alive") is True:
-                            values["last_seen_alive"] = now
-                        result = await session.execute(
-                            update(Subdomain)
-                            .where(
-                                Subdomain.target == target,
-                                Subdomain.subdomain == sub,
-                            )
-                            .values(**values)
+        async with self._session() as session, session.begin():
+            for i in range(0, len(results), chunk_size):
+                batch = results[i : i + chunk_size]
+                for row in batch:
+                    sub = row.get("subdomain")
+                    if not sub:
+                        continue
+                    values = {
+                        k: v for k, v in row.items() if k in writable_columns
+                    }
+                    if not values:
+                        continue
+                    values["last_seen"] = now
+                    if row.get("alive") is True:
+                        values["last_seen_alive"] = now
+                    result = await session.execute(
+                        update(Subdomain)
+                        .where(
+                            Subdomain.target == target,
+                            Subdomain.subdomain == sub,
                         )
-                        updated += result.rowcount
+                        .values(**values)
+                    )
+                    updated += result.rowcount
         return updated
 
     # pylint: disable=too-many-locals,too-many-branches,too-many-statements
@@ -266,22 +264,20 @@ class StorageManager:
         """Save a ProcessedResult of subdomain scan results into the database."""
         self._ensure_initialized()
         new_count = 0
-        async with self._session() as session:
-            async with session.begin():
-                for plugin_name, subdomains in result.by_plugin.items():
-                    new_count += await self._upsert_batch(
-                        session, target, subdomains, plugin_name
-                    )
+        async with self._session() as session, session.begin():
+            for plugin_name, subdomains in result.by_plugin.items():
+                new_count += await self._upsert_batch(
+                    session, target, subdomains, plugin_name
+                )
         return new_count
 
     async def delete(self, target: str) -> int:
         """Delete all database records associated with the target domain."""
         self._ensure_initialized()
-        async with self._session() as session:
-            async with session.begin():
-                result = await session.execute(
-                    delete(Subdomain).where(Subdomain.target == target)
-                )
+        async with self._session() as session, session.begin():
+            result = await session.execute(
+                delete(Subdomain).where(Subdomain.target == target)
+            )
         return result.rowcount
 
     async def get_all(self, target: str) -> list[Subdomain]:
@@ -336,7 +332,7 @@ class StorageManager:
                 select(Subdomain)
                 .where(
                     Subdomain.target == target,
-                    Subdomain.alive == True,  # noqa: E712
+                    Subdomain.alive == True,
                 )
                 .options(selectinload(Subdomain.sources))
                 .order_by(Subdomain.subdomain)
@@ -351,7 +347,7 @@ class StorageManager:
                 select(Subdomain)
                 .where(
                     Subdomain.target == target,
-                    Subdomain.alive == False,  # noqa: E712
+                    Subdomain.alive == False,
                 )
                 .options(selectinload(Subdomain.sources))
                 .order_by(Subdomain.subdomain)

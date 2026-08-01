@@ -6,8 +6,7 @@ from abc import ABC, abstractmethod
 
 import aiohttp
 
-from core.errors import (PluginAuthError, PluginRateLimitError,
-                         PluginUnavailableError)
+from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailableError
 
 
 # pylint: disable=too-few-public-methods

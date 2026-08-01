@@ -21,6 +21,9 @@ def _get_storage() -> StorageManager:
 class Service(ABC):
     """Base service class providing shared database access and logging."""
 
+    def __init__(self, storage: StorageManager | None = None) -> None:
+        self._custom_storage = storage
+
     @property
     def logger(self) -> logging.Logger:
         """Automatic logger matching subclass classname."""
@@ -28,8 +31,8 @@ class Service(ABC):
 
     @property
     def storage(self) -> StorageManager:
-        """Access the shared StorageManager singleton."""
-        return _get_storage()
+        """Access the custom or shared StorageManager instance."""
+        return self._custom_storage or _get_storage()
 
     async def _with_storage(self, fn):
         """Execute a function with an initialized shared storage context."""

@@ -1,6 +1,5 @@
 """Censys search subdomain enumeration plugin."""
-from core.errors import (PluginAuthError, PluginRateLimitError,
-                         PluginUnavailableError)
+from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailableError
 from core.plugin import Plugin
 
 try:

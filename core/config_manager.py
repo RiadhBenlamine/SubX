@@ -2,7 +2,6 @@
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 import yaml
 from dotenv import dotenv_values
@@ -21,7 +20,7 @@ class ConfigManager:
         self.api_keys: dict[str, str] = {}
         self.scope: list[str] = []
         self.out_of_scope: list[str] = []
-        self.sources: Optional[list[str]] = None
+        self.sources: list[str] | None = None
 
         self._load_env()
         self._load_config_file()
@@ -105,6 +104,6 @@ class ConfigManager:
         """Get the blacklisted domains defined as out-of-scope."""
         return self.out_of_scope
 
-    def get_sources(self) -> Optional[list[str]]:
+    def get_sources(self) -> list[str] | None:
         """Get the allowed plugin sources list filter."""
         return self.sources

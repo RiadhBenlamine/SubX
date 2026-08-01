@@ -1,9 +1,15 @@
-*.yaml
+# Application / Local Configs & Databases
+config.yaml
+*.local.yaml
+*.secret.yaml
 *.db
-DEV_DOCS.md
-*.db
-/bin/httpx/*
+subx.backup-*.db
+projects/
 logs/
+.CI/*.txt
+DEV_DOCS.html
+/bin/httpx/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -1,10 +1,7 @@
 import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
 
 import pytest
 
-from core.db_models import Subdomain, SubdomainSource
 from core.models import ProcessedResult
 from core.storage_manager import StorageManager
 

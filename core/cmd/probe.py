@@ -1,5 +1,4 @@
 """CLI command for HTTP probing stored subdomains."""
-from typing import Optional
 
 import typer
 
@@ -26,10 +25,10 @@ class ProbeCommand(Command):
             "--domain",
             help="Target domain to probe stored subdomains for.",
         ),
-        output_n: Optional[str] = typer.Option(
+        output_n: str | None = typer.Option(
             None, "-oN", help="Save alive subdomains to file (one per line)."
         ),
-        output_x: Optional[str] = typer.Option(
+        output_x: str | None = typer.Option(
             None,
             "-oX",
             help=(
@@ -37,21 +36,28 @@ class ProbeCommand(Command):
                 "Use -oX '<sep>:<file>'."
             ),
         ),
-        output_tech: Optional[str] = typer.Option(
+        output_tech: str | None = typer.Option(
             None,
             "-oT",
             "--output-tech",
             help="Save alive subdomains with detected technologies to file.",
         ),
+        export_project: bool = typer.Option(
+            False,
+            "--project",
+            "-p",
+            help="Export/sync plain-text project directory structure after probing.",
+        ),
     ) -> None:
-        self.run_async(self._http_probe(domain, output_n, output_x, output_tech))
+        self.run_async(self._http_probe(domain, output_n, output_x, output_tech, export_project))
 
     async def _http_probe(
         self,
         domain: str,
-        output_n: Optional[str],
-        output_x: Optional[str],
-        output_tech: Optional[str],
+        output_n: str | None,
+        output_x: str | None,
+        output_tech: str | None,
+        export_project: bool,
     ) -> None:
         self.show_banner()
         self.setup_logging()
@@ -110,3 +116,10 @@ class ProbeCommand(Command):
                         for r in alive_rows
                     ]
                     ExportService.write_output(tech_lines, output_tech, separator="\n")
+
+        if export_project:
+            from core.services.project_service import ProjectService
+            from core.ui.renderers import render_project_summary
+            proj_service = ProjectService()
+            summary = await proj_service.export_project(domain)
+            render_project_summary(summary)

@@ -22,12 +22,11 @@ class ChaosPlugin(Plugin):
             async with self.session(
                 headers=headers,
                 timeout=aiohttp.ClientTimeout(total=15),
-            ) as session:
-                async with session.get(url) as resp:
-                    data = await resp.json()
-                    raw = data.get("subdomains") or []
-                    root = data.get("domain", domain)
-                    return [f"{sub}.{root}" for sub in raw if sub]
+            ) as session, session.get(url) as resp:
+                data = await resp.json()
+                raw = data.get("subdomains") or []
+                root = data.get("domain", domain)
+                return [f"{sub}.{root}" for sub in raw if sub]
         except PluginUnavailableError as e:
             if "HTTP 404" in str(e):
                 self.logger.warning("Domain %s not found in Chaos DB.", domain)

@@ -1,8 +1,7 @@
 import pytest
 
 from core.models import PluginResult
-from core.processor import (Processor, matches_boundary,
-                            normalize_and_validate_domain)
+from core.processor import Processor, matches_boundary, normalize_and_validate_domain
 
 
 def test_normalize_and_validate():

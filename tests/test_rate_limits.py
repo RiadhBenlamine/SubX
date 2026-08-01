@@ -1,12 +1,9 @@
-import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-import aiohttp
 import pytest
 
-from core.errors import (PluginAuthError, PluginRateLimitError,
-                         PluginUnavailableError)
+from core.errors import PluginAuthError, PluginRateLimitError
 from core.plugin import Plugin, TokenBucketRateLimiter
 
 

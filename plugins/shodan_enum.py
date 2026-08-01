@@ -4,8 +4,7 @@ import asyncio
 from shodan import Shodan
 from shodan.exception import APIError as ShodanAPIError
 
-from core.errors import (PluginAuthError, PluginRateLimitError,
-                         PluginUnavailableError)
+from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailableError
 from core.plugin import Plugin
 
 

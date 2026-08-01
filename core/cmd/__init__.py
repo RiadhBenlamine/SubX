@@ -6,6 +6,7 @@ from core.cmd.db import DbCommand
 from core.cmd.enum import EnumCommand
 from core.cmd.migrate import MigrateCommand
 from core.cmd.probe import ProbeCommand
+from core.cmd.project import ProjectCommand
 
 app = typer.Typer(
     name="subx",
@@ -19,4 +20,5 @@ app = typer.Typer(
 EnumCommand().register(app)
 DbCommand().register(app)
 ProbeCommand().register(app)
+ProjectCommand().register(app)
 MigrateCommand().register(app)

@@ -20,7 +20,7 @@ class ExportService:
         success(
             f"Saved [bold white]{len(values)}[/bold white] entries → "
             f"[bold white]{output}[/bold white]  "
-            f"[dim](sep: {repr(sep)})[/dim]"
+            f"[dim](sep: {sep!r})[/dim]"
         )
 
     @staticmethod

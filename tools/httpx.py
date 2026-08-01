@@ -4,8 +4,7 @@ import sys
 from pathlib import Path
 
 from core.logger import logger
-from core.tool import (Tool, ToolExecutionError, ToolNotFoundError,
-                       ToolTimeoutError)
+from core.tool import Tool, ToolExecutionError, ToolNotFoundError, ToolTimeoutError
 
 
 class HttpxTool(Tool):
@@ -161,12 +160,17 @@ class HttpxTool(Tool):
                 results[host] = {"subdomain": host, "alive": False}
             else:
                 tech_list = raw.get("tech")
+                host_ip = raw.get("host_ip")
+                if not host_ip and raw.get("a"):
+                    a_rec = raw["a"]
+                    host_ip = ", ".join(a_rec) if isinstance(a_rec, list) else str(a_rec)
                 results[host] = {
                     "subdomain": host,
                     "alive": True,
                     "status_code": raw.get("status_code"),
                     "title": raw.get("title"),
                     "tech": json.dumps(tech_list) if tech_list else None,
+                    "ip": host_ip,
                 }
 
         # Anything we sent in but didn't get a response line for = dead.

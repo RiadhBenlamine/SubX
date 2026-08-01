@@ -1,6 +1,5 @@
 """CLI command for database querying, export, and deletion."""
 from datetime import datetime
-from typing import Optional
 
 import typer
 
@@ -8,8 +7,12 @@ from core.cmd.base import Command
 from core.services.db_service import DbService
 from core.services.export_service import ExportService
 from core.ui.console import console, error, info, success, warn
-from core.ui.renderers import (render_db_rows, render_db_rows_web,
-                               render_db_summary, render_raw_rows)
+from core.ui.renderers import (
+    render_db_rows,
+    render_db_rows_web,
+    render_db_summary,
+    render_raw_rows,
+)
 
 
 class DbCommand(Command):
@@ -21,7 +24,7 @@ class DbCommand(Command):
     # pylint: disable=arguments-differ,too-many-arguments,too-many-positional-arguments
     def callback(
         self,
-        domain: Optional[str] = typer.Option(
+        domain: str | None = typer.Option(
             None, "-d", "--domain", help="Target domain. Omit to list all tracked domains."
         ),
         web: bool = typer.Option(
@@ -29,10 +32,10 @@ class DbCommand(Command):
             "--web",
             help="Show ALIVE, HTTP STATUS, and TITLE columns instead of source/timestamps.",
         ),
-        filter_plugin: Optional[str] = typer.Option(
+        filter_plugin: str | None = typer.Option(
             None, "--filter-plugin", help="Filter results by plugin name."
         ),
-        filter_tech: Optional[str] = typer.Option(
+        filter_tech: str | None = typer.Option(
             None, "--filter-tech", help="Filter results by detected technology (e.g. 'Nginx')."
         ),
         only_alive: bool = typer.Option(
@@ -41,16 +44,16 @@ class DbCommand(Command):
         only_dead: bool = typer.Option(
             False, "--dead", "--down", "--only-dead", help="Show/filter only subdomains currently DOWN."
         ),
-        new_since: Optional[str] = typer.Option(
+        new_since: str | None = typer.Option(
             None, "--new-since", help="Show subdomains first seen after YYYY-MM-DD."
         ),
         delete: bool = typer.Option(
             False, "--delete", help="Delete all records for the target domain."
         ),
-        output_n: Optional[str] = typer.Option(
+        output_n: str | None = typer.Option(
             None, "-oN", help="Save subdomains to file (one per line)."
         ),
-        output_x: Optional[str] = typer.Option(
+        output_x: str | None = typer.Option(
             None,
             "-oX",
             help=(
@@ -58,13 +61,19 @@ class DbCommand(Command):
                 "Use -oX '<sep>:<file>' e.g. ' :out.txt' or ';:out.txt'"
             ),
         ),
-        output_tech: Optional[str] = typer.Option(
+        output_tech: str | None = typer.Option(
             None,
             "-oT",
             "--output-tech",
             help="Save subdomains with detected technologies to file.",
         ),
-        raw_query: Optional[str] = typer.Option(
+        export_project: bool = typer.Option(
+            False,
+            "--project",
+            "-p",
+            help="Export plain-text project directory structure for target domain.",
+        ),
+        raw_query: str | None = typer.Option(
             None,
             "-C",
             "--custom-query",
@@ -87,6 +96,7 @@ class DbCommand(Command):
                 output_n,
                 output_x,
                 output_tech,
+                export_project,
                 raw_query,
             )
         )
@@ -94,18 +104,19 @@ class DbCommand(Command):
     # pylint: disable=too-many-arguments,too-many-positional-arguments
     async def _db(
         self,
-        domain: Optional[str],
+        domain: str | None,
         web: bool,
-        filter_plugin: Optional[str],
-        filter_tech: Optional[str],
+        filter_plugin: str | None,
+        filter_tech: str | None,
         only_alive: bool,
         only_dead: bool,
-        new_since: Optional[str],
+        new_since: str | None,
         delete: bool,
-        output_n: Optional[str],
-        output_x: Optional[str],
-        output_tech: Optional[str],
-        raw_query: Optional[str],
+        output_n: str | None,
+        output_x: str | None,
+        output_tech: str | None,
+        export_project: bool,
+        raw_query: str | None,
     ) -> None:
         self.show_banner()
         self.setup_logging()
@@ -117,14 +128,14 @@ class DbCommand(Command):
             return
 
         if not domain:
-            if any([delete, filter_plugin, filter_tech, only_alive, only_dead, new_since, output_n, output_x, output_tech, web]):
+            if any([delete, filter_plugin, filter_tech, only_alive, only_dead, new_since, output_n, output_x, output_tech, export_project, web]):
                 error("Filters and output flags require -d <domain>.")
             await self._db_summary(service)
             return
 
         if delete:
-            if output_n or output_x or output_tech:
-                warn("-oN / -oX / -oT are ignored when using --delete.")
+            if output_n or output_x or output_tech or export_project:
+                warn("-oN / -oX / -oT / --project are ignored when using --delete.")
             await self._db_delete(service, domain)
             return
 
@@ -140,6 +151,7 @@ class DbCommand(Command):
             output_n,
             output_x,
             output_tech,
+            export_project,
         )
 
     async def _db_summary(self, service: DbService) -> None:
@@ -168,14 +180,15 @@ class DbCommand(Command):
         service: DbService,
         domain: str,
         web: bool,
-        filter_plugin: Optional[str],
-        filter_tech: Optional[str],
+        filter_plugin: str | None,
+        filter_tech: str | None,
         only_alive: bool,
         only_dead: bool,
-        new_since: Optional[str],
-        output_n: Optional[str],
-        output_x: Optional[str],
-        output_tech: Optional[str],
+        new_since: str | None,
+        output_n: str | None,
+        output_x: str | None,
+        output_tech: str | None,
+        export_project: bool,
     ) -> None:
         since_dt = None
         filters_str = []
@@ -241,12 +254,19 @@ class DbCommand(Command):
             ]
             ExportService.write_output(tech_lines, output_tech, separator="\n")
 
+        if export_project:
+            from core.services.project_service import ProjectService
+            from core.ui.renderers import render_project_summary
+            proj_service = ProjectService()
+            summary = await proj_service.export_project(domain)
+            render_project_summary(summary)
+
     async def _db_raw_query(
         self,
         service: DbService,
         query: str,
-        output_n: Optional[str],
-        output_x: Optional[str],
+        output_n: str | None,
+        output_x: str | None,
     ) -> None:
         q = query.strip()
         if not q.upper().startswith("SELECT"):

@@ -220,3 +220,22 @@ def render_http_probe_summary(rows: list, domain: str) -> None:
         title=f"[bold cyan]Probe Summary — {domain}[/bold cyan]",
         border_style="cyan",
     ))
+
+
+def render_project_summary(summary) -> None:
+    """Render a visual summary of the generated project directory and plain-text files."""
+    console.print(f"\n[bold cyan]📁 Project Export — {summary.target}[/bold cyan]")
+    console.print(f"[dim]  Project Dir : [/dim][bold white]{summary.project_dir}[/bold white]")
+    console.print(f"[dim]  Recon Dir   : [/dim][bold white]{summary.recon_dir}[/bold white]\n")
+
+    table = make_table(
+        ("FILE",    {"style": "white",      "no_wrap": True}),
+        ("ENTRIES", {"style": "bold green", "justify": "right"}),
+        ("PATH",    {"style": "dim white"}),
+    )
+    for filename, count in summary.files_created.items():
+        file_path = summary.recon_dir / filename
+        table.add_row(filename, str(count), str(file_path))
+
+    console.print(table)
+    console.print()

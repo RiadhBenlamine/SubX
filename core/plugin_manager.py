@@ -5,8 +5,7 @@ import inspect
 import logging
 import pathlib
 
-from core.errors import (PluginAuthError, PluginRateLimitError,
-                         PluginUnavailableError)
+from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailableError
 from core.models import PluginResult
 from core.plugin import Plugin
 

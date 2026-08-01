@@ -1,8 +1,7 @@
 """VirusTotal relationship subdomain enumeration plugin."""
 import aiohttp
 
-from core.errors import (PluginAuthError, PluginRateLimitError,
-                         PluginUnavailableError)
+from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailableError
 from core.plugin import Plugin
 
 MAX_RATE_LIMIT_RETRIES = 3

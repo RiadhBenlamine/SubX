@@ -4,7 +4,7 @@ import typer
 from core.cmd.base import Command
 from core.logger import get_dedup_handler
 from core.services.enum_service import EnumService
-from core.ui.console import console, error, info, warn
+from core.ui.console import console, error, info
 from core.ui.renderers import render_enum_results
 
 
@@ -23,10 +23,13 @@ class EnumCommand(Command):
         save: bool = typer.Option(
             True, "--save/--no-save", help="Save results to database."
         ),
+        export_project: bool = typer.Option(
+            False, "--project", "-p", help="Export plain-text project directory structure after enumeration."
+        ),
     ) -> None:
-        self.run_async(self._enum(config_file, save))
+        self.run_async(self._enum(config_file, save, export_project))
 
-    async def _enum(self, config_file: str, save: bool) -> None:
+    async def _enum(self, config_file: str, save: bool, export_project: bool) -> None:
         self.show_banner()
         self.setup_logging()
 
@@ -60,6 +63,14 @@ class EnumCommand(Command):
 
         render_enum_results(result.processed_by_target, save)
 
+        if export_project and save:
+            from core.services.project_service import ProjectService
+            from core.ui.renderers import render_project_summary
+            proj_service = ProjectService()
+            for target in result.scope:
+                summary = await proj_service.export_project(target)
+                render_project_summary(summary)
+
         # ── Error summary (deduplicated) ────────────────────────
         self._print_error_summary()
 
@@ -82,7 +93,7 @@ class EnumCommand(Command):
             msg = parts[2] if len(parts) == 3 else key
             console.print(f"[dim]      × {count}  {msg}[/dim]")
 
-        from core.logger import _LOG_FILE  # noqa: PLC0415
+        from core.logger import _LOG_FILE
         console.print(
             f"\n[dim]  Full error log → [bold]{_LOG_FILE}[/bold][/dim]"
         )
