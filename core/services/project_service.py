@@ -49,63 +49,51 @@ class ProjectService(Service):
 
             files_created: dict[str, int] = {}
 
+            # Sets of alive and dead subdomains for reciprocal cleanup
+            alive_subs_set = {r.subdomain for r in rows if r.alive is True}
+            dead_subs_set = {r.subdomain for r in rows if r.alive is False}
+
             # 1. subdomains.txt — all subdomains
             all_subs = [r.subdomain for r in rows]
-            subdomains_file = recon_dir / "subdomains.txt"
-            subdomains_file.write_text(
-                "\n".join(all_subs) + ("\n" if all_subs else ""), encoding="utf-8"
+            files_created["subdomains.txt"] = self._save_deduped(
+                recon_dir / "subdomains.txt", all_subs
             )
-            files_created["subdomains.txt"] = len(all_subs)
 
             # 2. alive.txt — subdomains verified alive
-            alive_rows = [r for r in rows if r.alive is True]
-            alive_subs = [r.subdomain for r in alive_rows]
-            alive_file = recon_dir / "alive.txt"
-            alive_file.write_text(
-                "\n".join(alive_subs) + ("\n" if alive_subs else ""), encoding="utf-8"
+            alive_subs = [r.subdomain for r in rows if r.alive is True]
+            files_created["alive.txt"] = self._save_deduped(
+                recon_dir / "alive.txt", alive_subs, remove_lines=dead_subs_set
             )
-            files_created["alive.txt"] = len(alive_subs)
 
             # 3. dead.txt — subdomains currently down
-            dead_rows = [r for r in rows if r.alive is False]
-            dead_subs = [r.subdomain for r in dead_rows]
-            dead_file = recon_dir / "dead.txt"
-            dead_file.write_text(
-                "\n".join(dead_subs) + ("\n" if dead_subs else ""), encoding="utf-8"
+            dead_subs = [r.subdomain for r in rows if r.alive is False]
+            files_created["dead.txt"] = self._save_deduped(
+                recon_dir / "dead.txt", dead_subs, remove_lines=alive_subs_set
             )
-            files_created["dead.txt"] = len(dead_subs)
 
             # 4. techs.txt — subdomains with detected technologies
-            tech_rows = [r for r in rows if r.tech]
             tech_lines = [
-                f"{r.subdomain} [{_format_tech(r.tech)}]" for r in tech_rows
+                f"{r.subdomain} [{_format_tech(r.tech)}]" for r in rows if r.tech
             ]
-            techs_file = recon_dir / "techs.txt"
-            techs_file.write_text(
-                "\n".join(tech_lines) + ("\n" if tech_lines else ""), encoding="utf-8"
+            files_created["techs.txt"] = self._save_deduped(
+                recon_dir / "techs.txt", tech_lines
             )
-            files_created["techs.txt"] = len(tech_lines)
 
             # 5. status.txt — HTTP status code and title for probed subdomains
-            status_rows = [r for r in rows if r.status_code is not None or r.title]
             status_lines = [
                 f"{r.subdomain} [{r.status_code or '—'}] [{r.title or '—'}]"
-                for r in status_rows
+                for r in rows
+                if r.status_code is not None or r.title
             ]
-            status_file = recon_dir / "status.txt"
-            status_file.write_text(
-                "\n".join(status_lines) + ("\n" if status_lines else ""), encoding="utf-8"
+            files_created["status.txt"] = self._save_deduped(
+                recon_dir / "status.txt", status_lines
             )
-            files_created["status.txt"] = len(status_lines)
 
             # 6. ips.txt — subdomains with IP addresses
-            ip_rows = [r for r in rows if r.ip]
-            ip_lines = [f"{r.subdomain} [{r.ip}]" for r in ip_rows]
-            ips_file = recon_dir / "ips.txt"
-            ips_file.write_text(
-                "\n".join(ip_lines) + ("\n" if ip_lines else ""), encoding="utf-8"
+            ip_lines = [f"{r.subdomain} [{r.ip}]" for r in rows if r.ip]
+            files_created["ips.txt"] = self._save_deduped(
+                recon_dir / "ips.txt", ip_lines
             )
-            files_created["ips.txt"] = len(ip_lines)
 
             # 7. sources.txt — subdomains with discovery sources
             source_lines = []
@@ -116,11 +104,9 @@ class ProjectService(Service):
                     else r.source_plugin
                 )
                 source_lines.append(f"{r.subdomain} [{sources_str}]")
-            sources_file = recon_dir / "sources.txt"
-            sources_file.write_text(
-                "\n".join(source_lines) + ("\n" if source_lines else ""), encoding="utf-8"
+            files_created["sources.txt"] = self._save_deduped(
+                recon_dir / "sources.txt", source_lines
             )
-            files_created["sources.txt"] = len(source_lines)
 
             logger.info("Exported project structure for %s to %s", domain, recon_dir)
 
@@ -132,3 +118,38 @@ class ProjectService(Service):
             )
 
         return await self._with_storage(_export)
+
+    @staticmethod
+    def _save_deduped(
+        file_path: Path,
+        new_lines: list[str],
+        remove_lines: set[str] | None = None,
+    ) -> int:
+        """Read existing file if present, filter out remove_lines, merge new_lines without duplicates, write back."""
+        existing_lines: list[str] = []
+        seen: set[str] = set()
+
+        remove_set = remove_lines or set()
+
+        if file_path.exists():
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if stripped and stripped not in remove_set and stripped not in seen:
+                        seen.add(stripped)
+                        existing_lines.append(stripped)
+            except Exception:
+                pass
+
+        merged = list(existing_lines)
+        for line in new_lines:
+            stripped = line.strip()
+            if stripped and stripped not in seen:
+                seen.add(stripped)
+                merged.append(stripped)
+
+        file_path.write_text(
+            "\n".join(merged) + ("\n" if merged else ""), encoding="utf-8"
+        )
+        return len(merged)
