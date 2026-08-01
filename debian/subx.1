@@ -1,0 +1,40 @@
+.TH SUBX 1 "August 2026" "SubX 2.0.0" "User Commands"
+.SH NAME
+subx \- Asynchronous Subdomain Reconnaissance & Asset Management Framework
+.SH SYNOPSIS
+.B subx
+[\fICOMMAND\fR] [\fIOPTIONS\fR]
+.SH DESCRIPTION
+SubX is a fast, asynchronous attack-surface mapping and subdomain enumeration tool designed for security researchers, penetration testers, and bug bounty hunters.
+It aggregates reconnaissance findings from multiple passive sources (like Shodan, VirusTotal, Censys, and ProjectDiscovery Chaos), filters results against custom target scopes, and manages asset lifecycles inside a SQLite or PostgreSQL database.
+.SH COMMANDS
+.TP
+\fbenum\fR
+Enumerate subdomains for target domains defined in a YAML/JSON configuration file.
+.TP
+\fbhttp-probe\fR
+Probe stored subdomains for HTTP liveness, response status codes, HTML titles, and web technology stacks using httpx.
+.TP
+\fbdb\fR
+Query, filter, export, or manage stored subdomains in the database.
+.TP
+\fbproject\fR
+Export a structured plain-text recon directory layout per target domain.
+.TP
+\fbimport-sqlite\fR
+Import an existing SQLite database into PostgreSQL or active target database engine.
+.TP
+\fbdev-migrate\fR
+Migrate database schema when upgrading database models.
+.SH OPTIONS
+.TP
+\fB\-c\fR, \fB\-\-config\fR \fIPATH\fR
+Path to YAML/JSON scope and API keys configuration file.
+.TP
+\fB\-d\fR, \fB\-\-domain\fR \fIDOMAIN\fR
+Target domain name.
+.TP
+\fB\-p\fR, \fB\-\-project\fR
+Export plain-text project folder structure after scan.
+.SH AUTHOR
+Written by rbn0x00 <rbn0x00@github.com>.

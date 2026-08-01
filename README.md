@@ -126,7 +126,13 @@ api_keys:
 pip install subx-recon
 ```
 
-### Option 2: Install from Source
+### Option 2: Install via Debian Package (.deb) (Debian, Ubuntu, Kali Linux)
+Download the `.deb` package from the [Latest Release](https://github.com/RiadhBenlamine/SubX/releases) and install via `apt`:
+```bash
+sudo apt install ./subx_2.0.0-1_all.deb
+```
+
+### Option 3: Install from Source
 ```bash
 git clone https://github.com/RiadhBenlamine/SubX.git
 cd SubX

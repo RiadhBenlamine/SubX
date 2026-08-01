@@ -1,0 +1,7 @@
+subx (2.0.0-1) unstable; urgency=medium
+
+  * Initial release of SubX 2.0.0 for Debian / Ubuntu / Kali.
+  * Added PostgreSQL database support and SQLite migration engine.
+  * Added structured plain-text project folder exporter.
+
+ -- rbn0x00 <rbn0x00@github.com>  Sat, 01 Aug 2026 16:00:00 +0100

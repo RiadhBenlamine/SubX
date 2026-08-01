@@ -1,0 +1,19 @@
+Source: subx
+Section: net
+Priority: optional
+Maintainer: rbn0x00 <rbn0x00@github.com>
+Build-Depends: debhelper-compat (= 13), dh-sequence-python3, python3-all, python3-setuptools, python3-hatchling
+Standards-Version: 4.6.2
+Homepage: https://github.com/RiadhBenlamine/SubX
+Vcs-Git: https://github.com/RiadhBenlamine/SubX.git
+Vcs-Browser: https://github.com/RiadhBenlamine/SubX
+
+Package: subx
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3 (>= 3.10), python3-aiohttp, python3-yaml
+Description: SUBX — Subdomain Reconnaissance & Asset Management Framework
+ SubX is a fast, asynchronous attack-surface mapping and subdomain enumeration
+ tool designed for security researchers, penetration testers, and bug bounty hunters.
+ It aggregates reconnaissance findings from multiple passive sources (like Shodan,
+ VirusTotal, Censys, and ProjectDiscovery Chaos), filters results against custom target
+ scopes, and manages asset lifecycles inside a SQLite or PostgreSQL database.

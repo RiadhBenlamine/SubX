@@ -1,0 +1,48 @@
+name: Build Debian Package (.deb)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-deb:
+    name: Build & Release Debian (.deb) Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev debhelper devscripts python3-all
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build .deb Package
+        run: python3 scripts/build_deb.py
+
+      - name: Verify .deb package with dpkg
+        run: |
+          dpkg-deb --info dist/subx_2.0.0-1_all.deb
+          dpkg-deb --contents dist/subx_2.0.0-1_all.deb
+
+      - name: Upload .deb Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: subx-debian-package
+          path: dist/*.deb
+
+      - name: Attach .deb to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.deb
