@@ -151,7 +151,21 @@ subx [COMMAND] [OPTIONS]
 uv run python main.py [COMMAND] [OPTIONS]
 ```
 
-### 1. Subdomain Enumeration (`enum`)
+### 1. PostgreSQL Database Initialization (`init-db`)
+Initialize your PostgreSQL database and set PostgreSQL as the default database for SubX:
+
+```bash
+subx init-db
+# OR non-interactively via CLI flags:
+subx init-db -H 127.0.0.1 -u postgres -P "mypassword" -p 5432 -d subx
+```
+
+Running `subx init-db` automatically:
+1. Connects to PostgreSQL and creates the database `subx` if missing.
+2. Initializes schema tables (`subx_subdomain`, `subx_subdomain_sources`).
+3. Saves settings to `~/.config/subx/config.yaml` so **all future SubX commands default to PostgreSQL**.
+
+### 2. Subdomain Enumeration (`enum`)
 Start passive subdomain enumeration for target domains configured in your configuration file.
 
 ```bash

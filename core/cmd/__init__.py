@@ -5,6 +5,7 @@ from core.cmd.base import HELP_NAMES
 from core.cmd.db import DbCommand
 from core.cmd.enum import EnumCommand
 from core.cmd.import_sqlite import ImportSqliteCommand
+from core.cmd.init_db import InitDbCommand
 from core.cmd.migrate import MigrateCommand
 from core.cmd.probe import ProbeCommand
 from core.cmd.project import ProjectCommand
@@ -18,6 +19,7 @@ app = typer.Typer(
 )
 
 # Register all subcommands
+InitDbCommand().register(app)
 EnumCommand().register(app)
 DbCommand().register(app)
 ProbeCommand().register(app)

@@ -20,6 +20,34 @@ logger = logging.getLogger(__name__)
 DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///subx.db"
 
 
+def _load_pg_url_from_config_files() -> str | None:
+    """Attempt to load PostgreSQL configuration from global ~/.config/subx/config.yaml or local config.yaml."""
+    candidates = [
+        Path.home() / ".config" / "subx" / "config.yaml",
+        Path("config.yaml"),
+        Path("config.yml"),
+    ]
+    for c in candidates:
+        if not c.exists():
+            continue
+        try:
+            import yaml
+            with c.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            db_cfg = data.get("db", {})
+            if isinstance(db_cfg, dict) and db_cfg.get("host"):
+                host = db_cfg["host"]
+                user = db_cfg.get("user") or db_cfg.get("username") or "postgres"
+                password = db_cfg.get("password") or db_cfg.get("pass") or ""
+                port = db_cfg.get("port") or 5432
+                dbname = db_cfg.get("dbname") or db_cfg.get("database") or "subx"
+                auth = f"{user}:{password}@" if password else f"{user}@"
+                return f"postgresql+asyncpg://{auth}{host}:{port}/{dbname}"
+        except Exception:
+            continue
+    return None
+
+
 def normalize_db_url(db_url: str | None = None) -> str:
     """Resolve and normalize database URL for SQLite or PostgreSQL engines."""
     if db_url:
@@ -37,7 +65,11 @@ def normalize_db_url(db_url: str | None = None) -> str:
         auth = f"{user}:{password}@" if password else f"{user}@"
         url = f"postgresql+asyncpg://{auth}{host}:{port}/{dbname}"
     else:
-        url = DEFAULT_DATABASE_URL
+        pg_from_config = _load_pg_url_from_config_files()
+        if pg_from_config:
+            url = pg_from_config
+        else:
+            url = DEFAULT_DATABASE_URL
 
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
