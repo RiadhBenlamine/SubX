@@ -334,6 +334,23 @@ This command:
 
 ---
 
+## Release Automation
+
+SubX includes a release script that automates version bumping, running unit tests, building Python wheels/sdist and Debian packages, uploading to PyPI, creating Git release tags, and pushing to GitHub:
+
+```bash
+# Bump patch version (e.g. 2.0.2 -> 2.0.3) and publish:
+python scripts/release.py patch
+
+# Bump minor version (e.g. 2.0.2 -> 2.1.0) and publish:
+python scripts/release.py minor
+
+# Set specific release version (e.g. 2.0.5) and publish:
+python scripts/release.py 2.0.5
+```
+
+---
+
 ## Development & Extension
 If you want to contribute, build custom components, add discovery APIs, or write command wrappers, see the [Developer Documentation (DEV_DOCS.md)](file:///c:/Users/DELL/PycharmProjects/SubX/DEV_DOCS.md) for full API reference, layering rules, and extension workflows.
 
