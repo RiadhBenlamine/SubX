@@ -123,7 +123,7 @@ api_keys:
 
 ### Option 1: Install from PyPI
 ```bash
-pip install subx
+pip install subx-recon
 ```
 
 ### Option 2: Install from Source
