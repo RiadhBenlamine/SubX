@@ -119,13 +119,30 @@ api_keys:
 
 ---
 
+## Installation
+
+### Option 1: Install from PyPI
+```bash
+pip install subx
+```
+
+### Option 2: Install from Source
+```bash
+git clone https://github.com/RiadhBenlamine/SubX.git
+cd SubX
+uv sync
+```
+
+---
+
 ## Usage Guide
 
-All CLI subcommands are executed using `subx` or directly via python:
+All CLI subcommands can be executed directly using `subx`:
 ```bash
-uv run python main.py [COMMAND] [OPTIONS]
-# OR if installed in environment:
 subx [COMMAND] [OPTIONS]
+
+# Or running from source checkout:
+uv run python main.py [COMMAND] [OPTIONS]
 ```
 
 ### 1. Subdomain Enumeration (`enum`)
