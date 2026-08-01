@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from core.logger import logger
@@ -12,9 +13,34 @@ class HttpxTool(Tool):
     Pure httpx wrapper: takes a list of hosts, returns normalized liveness
     results. No storage, no I/O beyond running the httpx binary — fetching
     input and persisting output is ToolManager's job.
+
+    Works on both Windows (bundled .exe in bin/) and Linux/macOS
+    (resolved from PATH or common Go install directories).
     """
 
     TOOL_NAME = "httpx"
+
+    # httpx defaults to 50 concurrent workers and ~10s per request before
+    # giving up on a single host. Budget generously per host so large lists
+    # (thousands of subdomains) don't get cut off mid-run, while small lists
+    # still get a reasonable floor rather than an unnecessarily long wait.
+    MIN_TIMEOUT = 120
+    PER_HOST_SECONDS = 0.3  # ~3000 hosts -> +900s on top of the floor
+
+    @staticmethod
+    def _install_hint() -> str:
+        """Return a platform-appropriate install instruction."""
+        if sys.platform == "win32":
+            return (
+                "Download the latest release from "
+                "https://github.com/projectdiscovery/httpx/releases "
+                "and place the .exe in bin/httpx/httpx.exe."
+            )
+        return (
+            "Install via: go install -v "
+            "github.com/projectdiscovery/httpx/cmd/httpx@latest  "
+            "or: apt install httpx"
+        )
 
     def _validate_tool_path(self, path: Path) -> None:
         """Reject the Python ``httpx`` CLI (pip-installed name collision).
@@ -34,28 +60,30 @@ class HttpxTool(Tool):
             combined = result.stdout + result.stderr
             if "projectdiscovery" not in combined.lower():
                 raise ToolNotFoundError(
-                    f"'{path}' does not appear to be ProjectDiscovery's httpx "
+                    f"'{path}' is not ProjectDiscovery's httpx "
                     f"(got: {combined.strip()[:120]}). "
-                    f"Install the correct httpx via `go install -v "
-                    f"github.com/projectdiscovery/httpx/cmd/httpx@latest`."
+                    f"{self._install_hint()}"
                 )
         except FileNotFoundError:
             raise ToolNotFoundError(
                 f"httpx binary not found at '{path}'."
             )
+        except PermissionError:
+            raise ToolNotFoundError(
+                f"'{path}' is not executable. "
+                f"On Linux/macOS run: chmod +x '{path}'"
+            )
+        except OSError as e:
+            # Catch-all for other OS-level errors (e.g. bad ELF binary on
+            # wrong architecture, missing shared libraries, etc.)
+            raise ToolNotFoundError(
+                f"Cannot execute '{path}': {e}"
+            )
         except subprocess.TimeoutExpired:
-            # If it hangs on -version it's probably not the right binary
             raise ToolNotFoundError(
                 f"'{path}' timed out on `-version` — likely not "
                 f"ProjectDiscovery's httpx."
             )
-
-    # httpx defaults to 50 concurrent workers and ~10s per request before
-    # giving up on a single host. Budget generously per host so large lists
-    # (thousands of subdomains) don't get cut off mid-run, while small lists
-    # still get a reasonable floor rather than an unnecessarily long wait.
-    MIN_TIMEOUT = 120
-    PER_HOST_SECONDS = 0.3  # ~3000 hosts -> +900s on top of the floor
 
     def _scaled_timeout(self, target_count: int) -> int:
         return max(self.MIN_TIMEOUT, int(target_count * self.PER_HOST_SECONDS))
@@ -76,7 +104,9 @@ class HttpxTool(Tool):
                 timeout=timeout,
             )
         except ToolNotFoundError:
-            logger.error("[httpx] binary not found — check install / PATH")
+            logger.error(
+                "[httpx] binary not found — %s", self._install_hint()
+            )
             raise
         except ToolTimeoutError:
             logger.error(f"[httpx] timed out after {timeout}s on {len(targets)} hosts")

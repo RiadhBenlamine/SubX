@@ -6,16 +6,23 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from core.errors import (
-ToolNotFoundError,ToolExecutionError,ToolTimeoutError
+    ToolNotFoundError, ToolExecutionError, ToolTimeoutError
 )
+
 
 class Tool(ABC):
     """
-    Generic abstract base class for SubX external tool wrappers
+    Generic abstract base class for SubX external tool wrappers.
 
-    Resolution strategy:
-      - Windows: BASE_DIR/bin/<name>/<name>.exe (bundled)
-      - Linux/macOS: system PATH (installed via `go install` / apt)
+    Resolution strategy (applied on both Windows and Linux/macOS):
+      1. Bundled binary at BASE_DIR/bin/<name>/<name>[.exe]
+      2. System PATH via shutil.which
+      3. Common Go / local install directories (Linux/macOS only):
+         ~/go/bin, ~/.local/bin, /usr/local/bin
+
+    Each candidate is validated via _validate_tool_path() so subclasses
+    can reject name-colliding binaries.  The first candidate that passes
+    validation wins; the result is cached for the lifetime of the instance.
 
     Subclasses must set TOOL_NAME and implement run().
     """
@@ -25,41 +32,79 @@ class Tool(ABC):
     # Subclasses override this with the actual binary name
     TOOL_NAME: str = ""
 
+    # Cached after the first successful resolution
+    _resolved_path: Path | None = None
+
     @staticmethod
-    def _get_os() -> str:
-        return sys.platform
+    def _is_windows() -> bool:
+        return sys.platform == "win32"
 
     def _resolve_tool_path(self, name: str) -> Path:
         """
         Resolve the path to a tool binary.
 
-        Resolution order:
-          1. Bundled binary at BASE_DIR/bin/<name>/<name>[.exe]  (any OS)
-          2. System PATH lookup via shutil.which                  (fallback)
+        Candidate sources (checked in order):
+          1. Bundled binary at BASE_DIR/bin/<name>/<name>[.exe]
+          2. System PATH via shutil.which
+          3. Common Go / local install directories (Linux/macOS only)
 
-        After resolution the path is handed to _validate_tool_path() so
-        subclasses can reject name-colliding binaries (e.g. the Python
-        ``httpx`` CLI vs. ProjectDiscovery's Go ``httpx``).
+        Each candidate is validated via _validate_tool_path(); if a candidate
+        is rejected (e.g. it's the Python ``httpx`` CLI rather than
+        ProjectDiscovery's Go binary) the search continues with the next one.
+
+        The validated path is cached so subsequent calls skip re-resolution.
 
         Raises ToolNotFoundError if no valid binary can be found.
         """
+        if self._resolved_path is not None:
+            return self._resolved_path
+
+        candidates: list[Path] = []
+
         # 1. Bundled binary (works on every OS; .exe suffix on Windows)
-        ext = ".exe" if self._get_os() == "win32" else ""
+        ext = ".exe" if self._is_windows() else ""
         bundled = self.BASE_DIR / "bin" / name / f"{name}{ext}"
         if bundled.is_file():
-            self._validate_tool_path(bundled)
-            return bundled
+            candidates.append(bundled)
 
-        # 2. Fallback: system PATH
+        # 2. System PATH
         on_path = shutil.which(name)
         if on_path:
-            resolved = Path(on_path)
-            self._validate_tool_path(resolved)
-            return resolved
+            p = Path(on_path)
+            if p not in candidates:
+                candidates.append(p)
+
+        # 3. Common install directories (go install, pipx, local)
+        if not self._is_windows():
+            home = Path.home()
+            for extra_dir in (
+                home / "go" / "bin",
+                home / ".local" / "bin",
+                Path("/usr/local/bin"),
+            ):
+                extra = extra_dir / name
+                if extra.is_file() and extra not in candidates:
+                    candidates.append(extra)
+
+        # Try each candidate; skip those that fail validation
+        last_error: ToolNotFoundError | None = None
+        for candidate in candidates:
+            try:
+                self._validate_tool_path(candidate)
+                self._resolved_path = candidate
+                return candidate
+            except ToolNotFoundError as e:
+                last_error = e
+                continue
+
+        if last_error is not None:
+            # We found binaries but none passed validation
+            raise last_error
 
         raise ToolNotFoundError(
-            f"Could not locate '{name}'. Checked bundled path '{bundled}' "
-            f"and system PATH. Install it via `go install` or apt."
+            f"Could not locate '{name}'. Checked bundled path '{bundled}', "
+            f"system PATH, and common install directories. "
+            f"Install it via `go install` or apt."
         )
 
     def _validate_tool_path(self, path: Path) -> None:
