@@ -214,7 +214,14 @@ class ImportService(Service):
                         except ValueError:
                             last_seen_alive = None
 
-                    now = datetime.now(tz=timezone.utc)
+                    if first_seen and first_seen.tzinfo is not None:
+                        first_seen = first_seen.astimezone(timezone.utc).replace(tzinfo=None)
+                    if last_seen and last_seen.tzinfo is not None:
+                        last_seen = last_seen.astimezone(timezone.utc).replace(tzinfo=None)
+                    if last_seen_alive and last_seen_alive.tzinfo is not None:
+                        last_seen_alive = last_seen_alive.astimezone(timezone.utc).replace(tzinfo=None)
+
+                    now = datetime.now(timezone.utc).replace(tzinfo=None)
                     first_seen = first_seen or now
                     last_seen = last_seen or now
 

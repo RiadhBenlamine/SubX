@@ -6,7 +6,7 @@ from sqlmodel import Field, Relationship, SQLModel
 
 
 def _utc_now() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Subdomain(SQLModel, table=True):

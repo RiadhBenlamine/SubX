@@ -171,7 +171,7 @@ class StorageManager:
 
         updated = 0
         chunk_size = 450
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         is_pg = self.engine.dialect.name == "postgresql"
         if is_pg:
@@ -609,7 +609,7 @@ class StorageManager:
         if not subdomains:
             return 0
 
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         chunk_size = 450
 
         # Query existing subdomains in this batch to determine new_count
