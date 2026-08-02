@@ -4,7 +4,7 @@ import aiohttp
 from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailableError
 from core.plugin import Plugin
 
-MAX_RATE_LIMIT_RETRIES = 3
+MAX_PAGES = 10
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 
@@ -24,7 +24,8 @@ class VirustotalPlugin(Plugin):
 
         try:
             async with self.session(headers=headers, timeout=_TIMEOUT) as session:
-                while url:
+                page = 1
+                while url and page <= MAX_PAGES:
                     try:
                         async with session.get(url) as response:
                             data = await response.json()
@@ -39,11 +40,17 @@ class VirustotalPlugin(Plugin):
                     except PluginUnavailableError as e:
                         raise PluginRateLimitError(str(e), subdomains) from e
 
-                    batch = [item["id"] for item in data.get("data", [])]
+                    batch = [item["id"] for item in data.get("data", []) if isinstance(item, dict) and "id" in item]
+                    if not batch:
+                        break
                     subdomains.extend(batch)
                     self.logger.info("Fetched %d subdomains so far...", len(subdomains))
 
-                    url = data.get("links", {}).get("next")
+                    next_url = data.get("links", {}).get("next")
+                    if not next_url or next_url == url:
+                        break
+                    url = next_url
+                    page += 1
         except PluginRateLimitError:
             raise
         except Exception as e:

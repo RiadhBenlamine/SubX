@@ -23,7 +23,12 @@ class ShodanPlugin(Plugin):
         if self.rate_limiter:
             await self.rate_limiter.acquire()
         try:
-            return await asyncio.to_thread(api.search, query, page=page)
+            return await asyncio.wait_for(
+                asyncio.to_thread(api.search, query, page=page),
+                timeout=15.0,
+            )
+        except asyncio.TimeoutError as e:
+            raise PluginUnavailableError(f"Shodan query '{query}' timed out.") from e
         except ShodanAPIError as e:
             err_str = str(e).lower()
             if "invalid api key" in err_str or "unauthorized" in err_str or "403" in err_str:
@@ -39,7 +44,7 @@ class ShodanPlugin(Plugin):
             raise PluginRateLimitError("ShodanPlugin skipped — circuit tripped.")
 
         try:
-            api = Shodan(self.config["SHODAN_API"], timeout=15)
+            api = Shodan(self.config["SHODAN_API"])
         except Exception as e:  # pylint: disable=broad-exception-caught
             raise PluginAuthError(f"Failed to initialize Shodan API client: {e}") from e
 

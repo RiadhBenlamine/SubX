@@ -23,8 +23,13 @@ class CrtshPlugin(Plugin):
                         return []
                     if isinstance(entries, list):
                         for entry in entries:
-                            if isinstance(entry, dict) and (name := entry.get("common_name")):
-                                subdomains.append(name)
+                            if isinstance(entry, dict):
+                                if name := entry.get("common_name"):
+                                    subdomains.append(name.strip())
+                                if name_val := entry.get("name_value"):
+                                    for sub in name_val.split("\n"):
+                                        if sub_clean := sub.strip():
+                                            subdomains.append(sub_clean)
         except Exception as e:
             self.logger.warning("crt.sh fetch failed for '%s': %s", domain, e)
             return []

@@ -34,9 +34,9 @@ class Command(ABC):
         banner()
 
     @staticmethod
-    def setup_logging() -> None:
+    def setup_logging(debug: bool = False) -> None:
         """Initialize the root application logger."""
-        setup_logger()
+        setup_logger(debug=debug)
 
     @staticmethod
     def run_async(coro) -> None:

@@ -57,17 +57,19 @@ class DeduplicatingHandler(logging.Handler):
 _dedup_handler: DeduplicatingHandler | None = None
 
 
-def setup_logger(level: int = logging.ERROR) -> None:
+def setup_logger(level: int = logging.ERROR, debug: bool = False) -> None:
     """Configure logging with deduplicated console output and a log file.
 
-    Console : shows each unique error/warning only once.
+    Console : shows each unique message.
     File    : captures every message with timestamps for debugging.
     """
     global _dedup_handler
 
+    log_level = logging.DEBUG if debug else level
+
     # ── Console (deduplicated) ──────────────────────────────────
     _dedup_handler = DeduplicatingHandler()
-    _dedup_handler.setLevel(level)
+    _dedup_handler.setLevel(log_level)
     _dedup_handler.setFormatter(logging.Formatter(
         fmt="[%(name)s|%(levelname)s]: %(message)s"
     ))
@@ -80,13 +82,13 @@ def setup_logger(level: int = logging.ERROR) -> None:
         backupCount=3,
         encoding="utf-8",
     )
-    file_handler.setLevel(logging.WARNING)
+    file_handler.setLevel(logging.DEBUG if debug else logging.WARNING)
     file_handler.setFormatter(logging.Formatter(
         fmt="%(asctime)s [%(name)s|%(levelname)s]: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     ))
 
-    logging.root.setLevel(min(level, logging.WARNING))
+    logging.root.setLevel(logging.DEBUG if debug else min(level, logging.WARNING))
     logging.root.handlers = [_dedup_handler, file_handler]
 
 

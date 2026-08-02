@@ -5,7 +5,7 @@ from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailable
 from core.plugin import Plugin
 
 MAX_RATE_LIMIT_RETRIES = 3
-MAX_PAGES = 50
+MAX_PAGES = 10
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
 
 

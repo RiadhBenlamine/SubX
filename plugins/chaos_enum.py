@@ -26,7 +26,16 @@ class ChaosPlugin(Plugin):
                 data = await resp.json()
                 raw = data.get("subdomains") or []
                 root = data.get("domain", domain)
-                return [f"{sub}.{root}" for sub in raw if sub]
+                subdomains = []
+                for sub in raw:
+                    if not sub:
+                        continue
+                    s = str(sub).strip().lower()
+                    if s.endswith(f".{root}") or s == root:
+                        subdomains.append(s)
+                    else:
+                        subdomains.append(f"{s}.{root}")
+                return subdomains
         except PluginUnavailableError as e:
             if "HTTP 404" in str(e):
                 self.logger.warning("Domain %s not found in Chaos DB.", domain)

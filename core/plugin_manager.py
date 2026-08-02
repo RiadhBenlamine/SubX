@@ -132,6 +132,9 @@ class PluginManager:
             return_exceptions=True,
         )
 
+        if progress_cb:
+            progress_cb(total_active, total_active, f"{target} passive search done")
+
         for plugin, outcome in zip(active, outcomes):
             name = plugin.__class__.__name__
             if isinstance(outcome, Exception):

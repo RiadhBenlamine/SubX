@@ -650,26 +650,29 @@ class StorageManager:
             from sqlalchemy.dialects.sqlite import insert as sqlite_insert
             insert_fn = sqlite_insert
 
-        new_count = 0
-        for sub in subdomains:
-            if sub not in existing_subdomains:
-                new_count += 1
+        new_count = sum(1 for sub in subdomains if sub not in existing_subdomains)
 
+        # Batch upsert subdomains
+        for i in range(0, len(subdomains), chunk_size):
+            batch = subdomains[i : i + chunk_size]
+            batch_values = [
+                {
+                    "target": target,
+                    "subdomain": sub,
+                    "source_plugin": plugin_name,
+                    "first_seen": now,
+                    "last_seen": now,
+                }
+                for sub in batch
+            ]
             stmt = (
                 insert_fn(Subdomain)
-                .values(
-                    target=target,
-                    subdomain=sub,
-                    source_plugin=plugin_name,
-                    first_seen=now,
-                    last_seen=now,
-                )
                 .on_conflict_do_update(
                     index_elements=["target", "subdomain"],
                     set_={"last_seen": now},
                 )
             )
-            await session.execute(stmt)
+            await session.execute(stmt, batch_values)
 
         # Retrieve IDs to populate subdomain_sources
         subdomain_ids = {}
@@ -685,17 +688,22 @@ class StorageManager:
             for sub_id, name in result.all():
                 subdomain_ids[name] = sub_id
 
-        # Insert sources into join table
+        # Batch insert sources into join table
+        source_values = []
         for name in subdomains:
             sub_id = subdomain_ids.get(name)
             if sub_id:
+                source_values.append({
+                    "subdomain_id": sub_id,
+                    "source_plugin": plugin_name,
+                })
+
+        if source_values:
+            for i in range(0, len(source_values), chunk_size):
+                batch_src = source_values[i : i + chunk_size]
                 if is_pg:
                     stmt_source = (
                         insert_fn(SubdomainSource)
-                        .values(
-                            subdomain_id=sub_id,
-                            source_plugin=plugin_name,
-                        )
                         .on_conflict_do_nothing(
                             index_elements=["subdomain_id", "source_plugin"]
                         )
@@ -703,12 +711,8 @@ class StorageManager:
                 else:
                     stmt_source = (
                         insert_fn(SubdomainSource)
-                        .values(
-                            subdomain_id=sub_id,
-                            source_plugin=plugin_name,
-                        )
                         .on_conflict_do_nothing()
                     )
-                await session.execute(stmt_source)
+                await session.execute(stmt_source, batch_src)
 
         return new_count

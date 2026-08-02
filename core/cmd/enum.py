@@ -26,12 +26,15 @@ class EnumCommand(Command):
         export_project: str | None = typer.Option(
             None, "--project", "-p", help="Export plain-text project directory structure after enumeration. Optionally specify output directory name (default: 'projects')."
         ),
+        debug: bool = typer.Option(
+            False, "--debug", "--verbose", help="Enable verbose debug logging."
+        ),
     ) -> None:
-        self.run_async(self._enum(config_file, save, export_project))
+        self.run_async(self._enum(config_file, save, export_project, debug))
 
-    async def _enum(self, config_file: str, save: bool, export_project: str | None) -> None:
+    async def _enum(self, config_file: str, save: bool, export_project: str | None, debug: bool) -> None:
         self.show_banner()
-        self.setup_logging()
+        self.setup_logging(debug=debug)
 
         service = EnumService()
 
