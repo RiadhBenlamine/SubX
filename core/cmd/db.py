@@ -67,11 +67,11 @@ class DbCommand(Command):
             "--output-tech",
             help="Save subdomains with detected technologies to file.",
         ),
-        export_project: bool = typer.Option(
-            False,
+        export_project: str | None = typer.Option(
+            None,
             "--project",
             "-p",
-            help="Export plain-text project directory structure for target domain.",
+            help="Export plain-text project directory structure for target domain. Optionally specify output directory name (default: 'projects').",
         ),
         raw_query: str | None = typer.Option(
             None,
@@ -115,7 +115,7 @@ class DbCommand(Command):
         output_n: str | None,
         output_x: str | None,
         output_tech: str | None,
-        export_project: bool,
+        export_project: str | None,
         raw_query: str | None,
     ) -> None:
         self.show_banner()
@@ -134,7 +134,7 @@ class DbCommand(Command):
             return
 
         if delete:
-            if output_n or output_x or output_tech or export_project:
+            if output_n or output_x or output_tech or export_project is not None:
                 warn("-oN / -oX / -oT / --project are ignored when using --delete.")
             await self._db_delete(service, domain)
             return
@@ -188,7 +188,7 @@ class DbCommand(Command):
         output_n: str | None,
         output_x: str | None,
         output_tech: str | None,
-        export_project: bool,
+        export_project: str | None,
     ) -> None:
         since_dt = None
         filters_str = []
@@ -254,11 +254,12 @@ class DbCommand(Command):
             ]
             ExportService.write_output(tech_lines, output_tech, separator="\n")
 
-        if export_project:
+        if export_project is not None:
             from core.services.project_service import ProjectService
             from core.ui.renderers import render_project_summary
+            out_dir = export_project if export_project else "projects"
             proj_service = ProjectService()
-            summary = await proj_service.export_project(domain)
+            summary = await proj_service.export_project(domain, out_dir=out_dir)
             render_project_summary(summary)
 
     async def _db_raw_query(

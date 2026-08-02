@@ -23,13 +23,13 @@ class EnumCommand(Command):
         save: bool = typer.Option(
             True, "--save/--no-save", help="Save results to database."
         ),
-        export_project: bool = typer.Option(
-            False, "--project", "-p", help="Export plain-text project directory structure after enumeration."
+        export_project: str | None = typer.Option(
+            None, "--project", "-p", help="Export plain-text project directory structure after enumeration. Optionally specify output directory name (default: 'projects')."
         ),
     ) -> None:
         self.run_async(self._enum(config_file, save, export_project))
 
-    async def _enum(self, config_file: str, save: bool, export_project: bool) -> None:
+    async def _enum(self, config_file: str, save: bool, export_project: str | None) -> None:
         self.show_banner()
         self.setup_logging()
 
@@ -63,12 +63,13 @@ class EnumCommand(Command):
 
         render_enum_results(result.processed_by_target, save)
 
-        if export_project and save:
+        if export_project is not None and save:
             from core.services.project_service import ProjectService
             from core.ui.renderers import render_project_summary
+            out_dir = export_project if export_project else "projects"
             proj_service = ProjectService()
             for target in result.scope:
-                summary = await proj_service.export_project(target)
+                summary = await proj_service.export_project(target, out_dir=out_dir)
                 render_project_summary(summary)
 
         # ── Error summary (deduplicated) ────────────────────────

@@ -42,11 +42,11 @@ class ProbeCommand(Command):
             "--output-tech",
             help="Save alive subdomains with detected technologies to file.",
         ),
-        export_project: bool = typer.Option(
-            False,
+        export_project: str | None = typer.Option(
+            None,
             "--project",
             "-p",
-            help="Export/sync plain-text project directory structure after probing.",
+            help="Export/sync plain-text project directory structure after probing. Optionally specify output directory name (default: 'projects').",
         ),
     ) -> None:
         self.run_async(self._http_probe(domain, output_n, output_x, output_tech, export_project))
@@ -57,7 +57,7 @@ class ProbeCommand(Command):
         output_n: str | None,
         output_x: str | None,
         output_tech: str | None,
-        export_project: bool,
+        export_project: str | None,
     ) -> None:
         self.show_banner()
         self.setup_logging()
@@ -117,9 +117,10 @@ class ProbeCommand(Command):
                     ]
                     ExportService.write_output(tech_lines, output_tech, separator="\n")
 
-        if export_project:
+        if export_project is not None:
             from core.services.project_service import ProjectService
             from core.ui.renderers import render_project_summary
+            out_dir = export_project if export_project else "projects"
             proj_service = ProjectService()
-            summary = await proj_service.export_project(domain)
+            summary = await proj_service.export_project(domain, out_dir=out_dir)
             render_project_summary(summary)
