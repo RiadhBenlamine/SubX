@@ -112,9 +112,9 @@ class SafeClientSession:
         timeout: aiohttp.ClientTimeout | None = None,
     ):
         self.plugin = plugin
-        connector = aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)
+        self.connector = aiohttp.TCPConnector(family=socket.AF_INET, limit=50)
         self.session = aiohttp.ClientSession(
-            headers=headers, timeout=timeout, connector=connector
+            headers=headers, timeout=timeout, connector=self.connector
         )
 
     async def __aenter__(self):
@@ -122,7 +122,11 @@ class SafeClientSession:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.session.__aexit__(exc_type, exc_val, exc_tb)
+        try:
+            await self.session.__aexit__(exc_type, exc_val, exc_tb)
+        finally:
+            if not self.connector.closed:
+                await self.connector.close()
 
     def request(self, method: str, url: str, **kwargs) -> SafeRequestContext:
         """Create a SafeRequestContext context manager wrapper for the HTTP query request."""

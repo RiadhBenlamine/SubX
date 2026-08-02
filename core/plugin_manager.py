@@ -87,9 +87,15 @@ class PluginManager:
         if not active:
             return results
 
+        async def _run_with_timeout(p: Plugin, tgt: str):
+            try:
+                return await asyncio.wait_for(p.run(tgt), timeout=30.0)
+            except asyncio.TimeoutError:
+                raise PluginUnavailableError("Plugin query timed out after 30s.")
+
         # Run only active plugins concurrently
         outcomes = await asyncio.gather(
-            *(p.run(target) for p in active),
+            *(_run_with_timeout(p, target) for p in active),
             return_exceptions=True,
         )
 
