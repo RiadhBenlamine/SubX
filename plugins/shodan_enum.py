@@ -39,7 +39,7 @@ class ShodanPlugin(Plugin):
             raise PluginRateLimitError("ShodanPlugin skipped — circuit tripped.")
 
         try:
-            api = Shodan(self.config["SHODAN_API"])
+            api = Shodan(self.config["SHODAN_API"], timeout=15)
         except Exception as e:  # pylint: disable=broad-exception-caught
             raise PluginAuthError(f"Failed to initialize Shodan API client: {e}") from e
 

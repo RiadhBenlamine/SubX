@@ -63,10 +63,16 @@ class PluginManager:
         no network call is made. After execution, any rate-limit or auth
         failure will trip the offending plugin's circuit so it is skipped for
         all subsequent domains.
+
+        The per-plugin timeout defaults to 60 seconds and can be overridden by
+        setting ``plugin_timeout`` (in seconds) in the config dict.
         """
         if not self.loaded_plugins:
             logger.warning("No plugins loaded. Call load_plugins() first.")
             return []
+
+        # Configurable timeout — 60s is a safe default for paginated APIs
+        plugin_timeout = float(self.config.get("plugin_timeout", 60))
 
         results: list[PluginResult] = []
 
@@ -102,7 +108,7 @@ class PluginManager:
             nonlocal completed
             name = p.__class__.__name__
             try:
-                res = await asyncio.wait_for(p.run(tgt), timeout=10.0)
+                res = await asyncio.wait_for(p.run(tgt), timeout=plugin_timeout)
                 completed += 1
                 if progress_cb:
                     progress_cb(
@@ -111,11 +117,14 @@ class PluginManager:
                 return res
             except asyncio.TimeoutError:
                 completed += 1
+                logger.warning("[%s] timed out after %.0fs.", name, plugin_timeout)
                 if progress_cb:
                     progress_cb(
                         completed, total_active, f"{tgt} — {name} timed out"
                     )
-                raise PluginUnavailableError("Plugin query timed out after 10s.")
+                raise PluginUnavailableError(
+                    f"Plugin query timed out after {plugin_timeout:.0f}s."
+                )
 
         # Run only active plugins concurrently
         outcomes = await asyncio.gather(

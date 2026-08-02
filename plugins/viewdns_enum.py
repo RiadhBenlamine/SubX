@@ -5,6 +5,9 @@ from core.errors import PluginRateLimitError, PluginUnavailableError
 from core.plugin import Plugin
 
 
+_TIMEOUT = aiohttp.ClientTimeout(total=15, connect=5, sock_connect=5, sock_read=10)
+
+
 class ViewDnsPlugin(Plugin):
     """Enumerates subdomains via ViewDNS API."""
 
@@ -16,13 +19,13 @@ class ViewDnsPlugin(Plugin):
         subdomains = []
 
         try:
-            async with self.session() as session:
+            async with self.session(timeout=_TIMEOUT) as session:
                 first_page = await self._fetch_page(session, domain, page=1)
                 if not first_page:
                     return []
 
                 subdomains.extend(self._extract(first_page))
-                total_pages = self._get_pagination(first_page)
+                total_pages = min(self._get_pagination(first_page), 20)
 
                 for page in range(2, total_pages + 1):
                     data = await self._fetch_page(session, domain, page=page)

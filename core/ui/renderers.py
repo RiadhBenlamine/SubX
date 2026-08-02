@@ -1,4 +1,6 @@
 """Presentation layer renderers for database summaries, subdomain tables, and scan details."""
+import json
+
 from rich import box
 from rich.panel import Panel
 from rich.table import Table
@@ -53,9 +55,6 @@ def render_db_rows(rows: list) -> None:
             last_alive_str,
         )
     console.print(table)
-
-
-import json
 
 
 def _format_tech(tech_raw: str | list | None) -> str:

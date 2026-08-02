@@ -9,6 +9,9 @@ import aiohttp
 
 from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailableError
 
+# Sensible default so plugins that don't specify a timeout can't hang indefinitely.
+_DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=30, connect=5, sock_connect=5, sock_read=25)
+
 
 # pylint: disable=too-few-public-methods
 class TokenBucketRateLimiter:
@@ -22,9 +25,15 @@ class TokenBucketRateLimiter:
         self.lock = asyncio.Lock()
 
     async def acquire(self):
-        """Acquire a token from the bucket, sleeping if necessary until one becomes available."""
-        async with self.lock:
-            while True:
+        """Acquire a token from the bucket, sleeping if necessary until one becomes available.
+
+        The lock is released *before* sleeping so that:
+          - Other coroutines waiting on the same limiter are not starved.
+          - ``asyncio.wait_for`` can cancel the sleep (and therefore the
+            enclosing ``Plugin.run``) instead of blocking behind the lock.
+        """
+        while True:
+            async with self.lock:
                 now = time.monotonic()
                 elapsed = now - self.last_update
                 self.last_update = now
@@ -33,7 +42,8 @@ class TokenBucketRateLimiter:
                     self.tokens -= 1.0
                     return
                 sleep_time = (1.0 - self.tokens) / self.rate
-                await asyncio.sleep(sleep_time)
+            # Sleep OUTSIDE the lock so other callers and cancellation can proceed
+            await asyncio.sleep(sleep_time)
 
 
 class SafeRequestContext:
@@ -96,6 +106,9 @@ class SafeRequestContext:
                     ) from e
                 await asyncio.sleep(backoff)
                 backoff *= 2.0
+
+        # Guard: all retry attempts exhausted without returning or raising.
+        raise PluginUnavailableError("All retry attempts exhausted.")
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.response:
@@ -194,8 +207,12 @@ class Plugin(ABC):
     def session(
         self, headers: dict | None = None, timeout: aiohttp.ClientTimeout | None = None
     ) -> SafeClientSession:
-        """Generate a new SafeClientSession wrapper configured for the plugin."""
-        return SafeClientSession(self, headers=headers, timeout=timeout)
+        """Generate a new SafeClientSession wrapper configured for the plugin.
+
+        If no explicit timeout is provided, a sensible default (30s total) is
+        applied so that unresponsive endpoints cannot hang indefinitely.
+        """
+        return SafeClientSession(self, headers=headers, timeout=timeout or _DEFAULT_TIMEOUT)
 
     @abstractmethod
     async def run(self, domain: str) -> list[str]:

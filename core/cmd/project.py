@@ -1,3 +1,4 @@
+"""CLI command for managing target project directories and exporting recon files."""
 from pathlib import Path
 import typer
 

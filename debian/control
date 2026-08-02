@@ -1,7 +1,7 @@
 Source: subx
 Section: net
 Priority: optional
-Maintainer: rbn0x00 <rbn0x00@github.com>
+Maintainer: rbn0x00 <benlamineriadh@gmail.com>
 Build-Depends: debhelper-compat (= 13), dh-sequence-python3, python3-all, python3-setuptools, python3-hatchling
 Standards-Version: 4.6.2
 Homepage: https://github.com/RiadhBenlamine/SubX
