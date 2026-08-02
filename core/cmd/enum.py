@@ -36,10 +36,11 @@ class EnumCommand(Command):
         service = EnumService()
 
         try:
-            with console.status(
-                "[cyan]Running passive engines...[/cyan]", spinner="dots"
-            ):
-                result = await service.run(config_file, save)
+            status = console.status("[cyan]Running passive engines...[/cyan]", spinner="dots")
+            with status:
+                def _update_status(text: str) -> None:
+                    status.update(f"[cyan]{text}[/cyan]")
+                result = await service.run(config_file, save, status_cb=_update_status)
         except (FileNotFoundError, ValueError) as e:
             error(str(e))
         except RuntimeError as e:

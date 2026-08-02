@@ -40,5 +40,24 @@ class Command(ABC):
 
     @staticmethod
     def run_async(coro) -> None:
-        """Run an asynchronous coroutine inside a synchronous context."""
-        asyncio.run(coro)
+        """Run an asynchronous coroutine inside a synchronous context with clean exception handling."""
+        async def _wrapper():
+            loop = asyncio.get_running_loop()
+            original_handler = loop.get_exception_handler()
+
+            def _custom_handler(l, context):
+                exc = context.get("exception")
+                msg = str(context.get("message") or "")
+                if isinstance(exc, OSError) or "gaierror" in msg.lower() or (exc and "gaierror" in str(exc).lower()):
+                    import logging
+                    logging.getLogger("asyncio").debug("Silenced background DNS/network exception: %s", context)
+                    return
+                if original_handler:
+                    original_handler(l, context)
+                else:
+                    l.default_exception_handler(context)
+
+            loop.set_exception_handler(_custom_handler)
+            return await coro
+
+        asyncio.run(_wrapper())

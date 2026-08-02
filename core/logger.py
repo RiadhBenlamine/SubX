@@ -36,7 +36,12 @@ class DeduplicatingHandler(logging.Handler):
         self._counts[key] += 1
         if key not in self._seen:
             self._seen.add(key)
-            self._stream_handler.emit(record)
+            msg = self.format(record)
+            try:
+                from core.ui.console import console
+                console.print(msg, highlight=False)
+            except Exception:
+                self._stream_handler.emit(record)
 
     def get_counts(self) -> dict[str, int]:
         """Return {message_key: count} for messages that appeared more than once."""

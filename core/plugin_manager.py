@@ -51,7 +51,11 @@ class PluginManager:
             [p.__class__.__name__ for p in self.loaded_plugins],
         )
 
-    async def execute_plugins(self, target: str) -> list[PluginResult]:
+    async def execute_plugins(
+        self,
+        target: str,
+        status_cb=None,
+    ) -> list[PluginResult]:
         """Execute all loaded plugins concurrently against a target domain.
 
         Plugins whose circuit breaker has been tripped are skipped entirely —
@@ -87,11 +91,30 @@ class PluginManager:
         if not active:
             return results
 
+        completed = 0
+        total_active = len(active)
+
         async def _run_with_timeout(p: Plugin, tgt: str):
+            nonlocal completed
+            name = p.__class__.__name__
             try:
-                return await asyncio.wait_for(p.run(tgt), timeout=30.0)
+                res = await asyncio.wait_for(p.run(tgt), timeout=15.0)
+                completed += 1
+                if status_cb:
+                    status_cb(
+                        f"Running passive engines ({tgt}) — [{completed}/{total_active}] {name} done"
+                    )
+                return res
             except asyncio.TimeoutError:
-                raise PluginUnavailableError("Plugin query timed out after 30s.")
+                completed += 1
+                if status_cb:
+                    status_cb(
+                        f"Running passive engines ({tgt}) — [{completed}/{total_active}] {name} timed out"
+                    )
+                raise PluginUnavailableError("Plugin query timed out after 15s.")
+
+        if status_cb:
+            status_cb(f"Running {total_active} passive engine(s) for {target}...")
 
         # Run only active plugins concurrently
         outcomes = await asyncio.gather(
@@ -102,7 +125,7 @@ class PluginManager:
         for plugin, outcome in zip(active, outcomes):
             name = plugin.__class__.__name__
             if isinstance(outcome, Exception):
-                logger.error("[%s] failed: %s", name, outcome)
+                logger.warning("[%s] failed: %s", name, outcome)
                 status = "unavailable"
                 subdomains: list[str] = []
 
