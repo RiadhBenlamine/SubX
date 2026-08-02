@@ -1,6 +1,6 @@
 [project]
 name = "subx-recon"
-version = "2.0.11"
+version = "2.0.12"
 description = "SUBX — Subdomain Reconnaissance & Asset Management Framework"
 readme = "README.md"
 license = { file = "LICENSE" }

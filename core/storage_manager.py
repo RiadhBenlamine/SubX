@@ -100,7 +100,21 @@ class StorageManager:
                 return
 
             if self.engine.dialect.name == "postgresql":
-                await self._ensure_pg_database_exists()
+                try:
+                    await self._ensure_pg_database_exists()
+                    async with self.engine.begin() as conn:
+                        await conn.run_sync(SQLModel.metadata.create_all)
+                    self._initialized = True
+                    return
+                except Exception as e:
+                    logger.warning("PostgreSQL initialization failed (%s). Falling back to SQLite database (subx.db).", e)
+                    self.db_url = "sqlite+aiosqlite:///subx.db"
+                    self.engine = create_async_engine(self.db_url, echo=False, future=True)
+                    self._session_factory = sessionmaker(
+                        bind=self.engine,
+                        class_=AsyncSession,
+                        expire_on_commit=False,
+                    )
 
             try:
                 async with self.engine.begin() as conn:
@@ -207,6 +221,12 @@ class StorageManager:
                 all_keys = set()
                 for v in batch_values:
                     all_keys.update(v.keys())
+
+                for v in batch_values:
+                    for k in all_keys:
+                        if k not in v:
+                            v[k] = None
+
                 all_keys.discard("target")
                 all_keys.discard("subdomain")
                 all_keys.discard("first_seen")

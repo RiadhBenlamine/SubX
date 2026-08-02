@@ -3,8 +3,7 @@ import aiohttp
 
 from core.plugin import Plugin
 
-_TIMEOUT = aiohttp.ClientTimeout(total=15)
-_MAX_RETRIES = 3
+_TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 
 class BgpPlugin(Plugin):
@@ -22,11 +21,20 @@ class BgpPlugin(Plugin):
         }
 
         subdomains = []
-        async with self.session(timeout=_TIMEOUT) as session:
-            async with session.get(url, headers=headers) as resp:
-                data = await resp.json()
-                for entry in data.get("domains", []):
-                    if name := entry.get("domain"):
-                        subdomains.append(name)
+        try:
+            async with self.session(timeout=_TIMEOUT) as session:
+                async with session.get(url, headers=headers) as resp:
+                    try:
+                        data = await resp.json(content_type=None)
+                    except Exception:
+                        return []
+                    if isinstance(data, dict):
+                        for entry in data.get("domains", []):
+                            if isinstance(entry, dict) and (name := entry.get("domain")):
+                                subdomains.append(name)
+        except Exception as e:
+            self.logger.warning("BGP fetch failed for '%s': %s", domain, e)
+            return []
+
         self.logger.info("Found %d subdomains for '%s'.", len(subdomains), domain)
         return subdomains

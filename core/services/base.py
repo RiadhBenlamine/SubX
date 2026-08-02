@@ -2,7 +2,7 @@
 import logging
 from abc import ABC
 
-from core.storage_manager import StorageManager
+from core.storage_manager import StorageManager, normalize_db_url
 
 # Module-level shared engine — initialized once, reused across all services.
 # pylint: disable=invalid-name
@@ -13,8 +13,9 @@ _shared_storage: StorageManager | None = None
 def _get_storage() -> StorageManager:
     """Return or create the shared StorageManager singleton."""
     global _shared_storage
-    if _shared_storage is None:
-        _shared_storage = StorageManager()
+    expected_url = normalize_db_url()
+    if _shared_storage is None or _shared_storage.db_url != expected_url:
+        _shared_storage = StorageManager(expected_url)
     return _shared_storage
 
 

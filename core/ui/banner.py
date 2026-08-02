@@ -13,12 +13,18 @@ from core.ui.console import console
 def get_version() -> str:
     """Retrieve installed subx-recon version dynamically or fallback."""
     try:
-        return get_pkg_version("subx-recon")
+        ver = get_pkg_version("subx-recon")
+        if ver:
+            return ver
     except PackageNotFoundError:
-        try:
-            return get_pkg_version("subx")
-        except PackageNotFoundError:
-            return "2.0.4"
+        pass
+    try:
+        ver = get_pkg_version("subx")
+        if ver:
+            return ver
+    except PackageNotFoundError:
+        pass
+    return "2.0.4"
 
 
 def _is_newer_version(current: str, latest: str) -> bool:
