@@ -1,6 +1,7 @@
 """Base classes and utility wrappers for subdomain discovery plugins, rate limiters, and clients."""
 import asyncio
 import logging
+import socket
 import time
 from abc import ABC, abstractmethod
 
@@ -88,7 +89,7 @@ class SafeRequestContext:
 
                 self.response = resp
                 return resp
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
                 if attempt == attempts:
                     raise PluginUnavailableError(
                         f"Connection / Timeout error after {attempts} attempts: {e}"
@@ -111,7 +112,10 @@ class SafeClientSession:
         timeout: aiohttp.ClientTimeout | None = None,
     ):
         self.plugin = plugin
-        self.session = aiohttp.ClientSession(headers=headers, timeout=timeout)
+        connector = aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)
+        self.session = aiohttp.ClientSession(
+            headers=headers, timeout=timeout, connector=connector
+        )
 
     async def __aenter__(self):
         await self.session.__aenter__()
