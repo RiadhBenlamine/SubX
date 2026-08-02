@@ -107,14 +107,11 @@ class StorageManager:
                     self._initialized = True
                     return
                 except Exception as e:
-                    logger.warning("PostgreSQL initialization failed (%s). Falling back to SQLite database (subx.db).", e)
-                    self.db_url = "sqlite+aiosqlite:///subx.db"
-                    self.engine = create_async_engine(self.db_url, echo=False, future=True)
-                    self._session_factory = sessionmaker(
-                        bind=self.engine,
-                        class_=AsyncSession,
-                        expire_on_commit=False,
-                    )
+                    logger.error("PostgreSQL database connection failed: %s", e)
+                    raise RuntimeError(
+                        f"PostgreSQL connection error: {e}. "
+                        "Please verify PostgreSQL is running and credentials in config.yaml / environment variables are correct."
+                    ) from e
 
             try:
                 async with self.engine.begin() as conn:

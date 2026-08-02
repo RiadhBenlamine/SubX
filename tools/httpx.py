@@ -131,7 +131,7 @@ class HttpxTool(Tool):
                 timeout=timeout,
             )
         except ToolNotFoundError:
-            logger.error(
+            logger.info(
                 "[httpx] binary not found — %s", self._install_hint()
             )
             raise

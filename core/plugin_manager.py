@@ -54,6 +54,7 @@ class PluginManager:
     async def execute_plugins(
         self,
         target: str,
+        progress_cb=None,
         status_cb=None,
     ) -> list[PluginResult]:
         """Execute all loaded plugins concurrently against a target domain.
@@ -94,27 +95,27 @@ class PluginManager:
         completed = 0
         total_active = len(active)
 
+        if progress_cb:
+            progress_cb(0, total_active, f"Querying {total_active} engines for {target}")
+
         async def _run_with_timeout(p: Plugin, tgt: str):
             nonlocal completed
             name = p.__class__.__name__
             try:
-                res = await asyncio.wait_for(p.run(tgt), timeout=15.0)
+                res = await asyncio.wait_for(p.run(tgt), timeout=10.0)
                 completed += 1
-                if status_cb:
-                    status_cb(
-                        f"Running passive engines ({tgt}) — [{completed}/{total_active}] {name} done"
+                if progress_cb:
+                    progress_cb(
+                        completed, total_active, f"{tgt} — {name} done"
                     )
                 return res
             except asyncio.TimeoutError:
                 completed += 1
-                if status_cb:
-                    status_cb(
-                        f"Running passive engines ({tgt}) — [{completed}/{total_active}] {name} timed out"
+                if progress_cb:
+                    progress_cb(
+                        completed, total_active, f"{tgt} — {name} timed out"
                     )
-                raise PluginUnavailableError("Plugin query timed out after 15s.")
-
-        if status_cb:
-            status_cb(f"Running {total_active} passive engine(s) for {target}...")
+                raise PluginUnavailableError("Plugin query timed out after 10s.")
 
         # Run only active plugins concurrently
         outcomes = await asyncio.gather(

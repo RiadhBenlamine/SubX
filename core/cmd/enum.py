@@ -36,17 +36,48 @@ class EnumCommand(Command):
         service = EnumService()
 
         try:
-            status = console.status("[cyan]Running passive engines...[/cyan]", spinner="dots")
-            with status:
-                def _update_status(text: str) -> None:
-                    status.update(f"[cyan]{text}[/cyan]")
-                result = await service.run(config_file, save, status_cb=_update_status)
+            from rich.progress import (
+                BarColumn,
+                MofNCompleteColumn,
+                Progress,
+                SpinnerColumn,
+                TaskProgressColumn,
+                TextColumn,
+                TimeElapsedColumn,
+            )
+
+            progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[bold cyan]{task.description}[/bold cyan]"),
+                BarColumn(bar_width=35, style="cyan", complete_style="bold cyan"),
+                MofNCompleteColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                console=console,
+                transient=True,
+            )
+
+            with progress:
+                task_id = progress.add_task("Running passive engines...", total=100)
+
+                def _on_progress(completed: int, total: int, desc: str) -> None:
+                    progress.update(
+                        task_id,
+                        completed=completed,
+                        total=total,
+                        description=f"Running passive engines ({desc})" if desc else "Running passive engines...",
+                    )
+
+                result = await service.run(config_file, save, progress_cb=_on_progress)
         except (FileNotFoundError, ValueError) as e:
             error(str(e))
+            return
         except RuntimeError as e:
             error(str(e))
+            return
         except Exception as e:  # pylint: disable=broad-exception-caught
             error(f"Failed to load config: {e}")
+            return
 
         # Display scope info
         info(f"Scope   : [bold white]{', '.join(result.scope)}[/bold white]")

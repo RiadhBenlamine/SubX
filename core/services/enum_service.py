@@ -27,6 +27,7 @@ class EnumService(Service):
         self,
         config_path: str,
         save: bool,
+        progress_cb=None,
         status_cb=None,
     ) -> EnumResult:
         """Parse configuration, launch discovery plugins, collect and persist results."""
@@ -58,7 +59,7 @@ class EnumService(Service):
             # if a plugin trips on domain 1, it is skipped for domains 2–N.
             domain_results = []
             for domain in scope:
-                dr = await self._run_domain(pm, processor, domain, status_cb=status_cb)
+                dr = await self._run_domain(pm, processor, domain, progress_cb=progress_cb, status_cb=status_cb)
                 domain_results.append(dr)
 
             for domain, processed in zip(scope, domain_results):
@@ -82,9 +83,10 @@ class EnumService(Service):
         pm: PluginManager,
         processor: Processor,
         domain: str,
+        progress_cb=None,
         status_cb=None,
     ) -> ProcessedResult:
-        raw = await pm.execute_plugins(domain, status_cb=status_cb)
+        raw = await pm.execute_plugins(domain, progress_cb=progress_cb, status_cb=status_cb)
         processed = processor.process(raw)
 
         if not processor.has_wildcards(processed):
@@ -101,7 +103,7 @@ class EnumService(Service):
         if status_cb:
             status_cb(f"Processing {len(wc_domains)} wildcard domain(s)...")
 
-        wc_batches = await asyncio.gather(*(pm.execute_plugins(wc, status_cb=status_cb) for wc in wc_domains))
+        wc_batches = await asyncio.gather(*(pm.execute_plugins(wc, progress_cb=progress_cb, status_cb=status_cb) for wc in wc_domains))
 
         for wc_raw in wc_batches:
             processed = processor.merge(processed, processor.process(wc_raw))

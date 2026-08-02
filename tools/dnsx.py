@@ -113,7 +113,7 @@ class DnsxTool(Tool):
                 timeout=timeout,
             )
         except ToolNotFoundError:
-            logger.error("[dnsx] binary not found — %s", self._install_hint())
+            logger.info("[dnsx] binary not found — %s", self._install_hint())
             raise
         except ToolTimeoutError:
             logger.error(f"[dnsx] timed out after {timeout}s on {len(targets)} hosts")

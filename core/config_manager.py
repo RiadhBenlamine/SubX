@@ -27,12 +27,21 @@ class ConfigManager:
         self._load_config_file()
 
     def _load_env(self) -> None:
-        env_path = Path.home() / ".config" / "subx" / ".env"
-        if not env_path.exists():
-            return
-        for key, value in dotenv_values(env_path).items():
-            if value:
-                self.api_keys[key.upper()] = value
+        candidates = [
+            Path(".env"),
+            Path.home() / ".config" / "subx" / ".env",
+        ]
+        for env_path in candidates:
+            if not env_path.is_file():
+                continue
+            try:
+                values = dotenv_values(env_path)
+                if isinstance(values, dict):
+                    for key, value in values.items():
+                        if key and value:
+                            self.api_keys[key.upper()] = str(value)
+            except Exception as e:
+                logger.warning("Could not parse environment file '%s': %s", env_path, e)
 
     def _load_config_file(self) -> None:
         if not self.config_path.exists():
