@@ -15,27 +15,33 @@ class ToolManager:
     works for httpx, naabu, nuclei, or any future Tool without modification.
     """
 
-    async def run_tool(self, tool: Tool, target: str, **kwargs) -> list[dict]:
+    async def run_tool(
+        self,
+        tool: Tool,
+        target: str,
+        tool_config: dict | None = None,
+        hosts: list[str] | None = None,
+        **kwargs,
+    ) -> list[dict]:
         """
-        Run `tool` against every stored subdomain for `target`, persist the
+        Run `tool` against specified or stored subdomains for `target`, persist the
         normalized results, and return them.
 
-        Returns [] if there's nothing stored for `target` yet (run `subx
-        enum` first).
+        Returns [] if there's nothing to process.
         """
         storage = _get_storage()
         await storage.init()
 
-        hosts = await self._fetch_hosts(storage, target)
-        if not hosts:
+        target_hosts = hosts if hosts is not None else await self._fetch_hosts(storage, target)
+        if not target_hosts:
             logger.warning(
-                "[%s] no subdomains stored for %s",
+                "[%s] no subdomains to process for %s",
                 tool.TOOL_NAME,
                 target,
             )
             return []
 
-        results = await tool.run(hosts, **kwargs)
+        results = await tool.run(target_hosts, tool_config=tool_config, **kwargs)
 
         if results:
             await storage.update_results(target, results)

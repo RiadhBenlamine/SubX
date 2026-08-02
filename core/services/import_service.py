@@ -96,6 +96,17 @@ class ImportService(Service):
                 total_subdomains += subdomains_imported
                 total_sources += sources_linked
 
+                # Auto pipeline after import if configured in config.yaml
+                try:
+                    from core.config_manager import ConfigManager
+                    tool_config = ConfigManager.load_tool_config("httpx")
+                    if tool_config is not None:
+                        from core.services.probe_service import ProbeService
+                        probe_service = ProbeService(storage=target_storage)
+                        await probe_service.probe_domain(domain, tool_config=tool_config)
+                except Exception as e:
+                    logger.warning("Auto-pipeline post-import failed for %s: %s", domain, e)
+
         await source_storage.close()
 
         return ImportSummary(

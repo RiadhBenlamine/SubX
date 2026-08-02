@@ -17,7 +17,7 @@ from core.models import ProcessedResult
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///subx.db"
+DEFAULT_DATABASE_URL = "postgresql+asyncpg://postgres@127.0.0.1:5432/subx"
 
 
 def _load_pg_url_from_config_files() -> str | None:
@@ -173,30 +173,53 @@ class StorageManager:
         chunk_size = 450
         now = datetime.now(tz=timezone.utc)
 
+        is_pg = self.engine.dialect.name == "postgresql"
+        if is_pg:
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+            insert_fn = pg_insert
+        else:
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+            insert_fn = sqlite_insert
+
         async with self._session() as session, session.begin():
             for i in range(0, len(results), chunk_size):
                 batch = results[i : i + chunk_size]
+                batch_values = []
                 for row in batch:
                     sub = row.get("subdomain")
                     if not sub:
                         continue
                     values = {
-                        k: v for k, v in row.items() if k in writable_columns
+                        k: v for k, v in row.items() if k in writable_columns and v is not None
                     }
-                    if not values:
-                        continue
+                    values["target"] = target
+                    values["subdomain"] = sub
+                    values["source_plugin"] = "Tool"
+                    values["first_seen"] = now
                     values["last_seen"] = now
                     if row.get("alive") is True:
                         values["last_seen_alive"] = now
-                    result = await session.execute(
-                        update(Subdomain)
-                        .where(
-                            Subdomain.target == target,
-                            Subdomain.subdomain == sub,
-                        )
-                        .values(**values)
-                    )
-                    updated += result.rowcount
+                    batch_values.append(values)
+
+                if not batch_values:
+                    continue
+
+                all_keys = set()
+                for v in batch_values:
+                    all_keys.update(v.keys())
+                all_keys.discard("target")
+                all_keys.discard("subdomain")
+                all_keys.discard("first_seen")
+                all_keys.discard("source_plugin")
+
+                stmt = insert_fn(Subdomain).values(batch_values)
+                update_cols = {k: getattr(stmt.excluded, k) for k in all_keys}
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["target", "subdomain"],
+                    set_=update_cols,
+                )
+                await session.execute(stmt)
+                updated += len(batch_values)
         return updated
 
     # pylint: disable=too-many-locals,too-many-branches,too-many-statements
@@ -349,7 +372,7 @@ class StorageManager:
                 return Path(raw) if raw else None
         return None
 
-    async def save(self, result: ProcessedResult, target: str) -> int:
+    async def save(self, result: ProcessedResult, target: str, auto_pipeline: bool = True) -> int:
         """Save a ProcessedResult of subdomain scan results into the database."""
         self._ensure_initialized()
         new_count = 0
@@ -358,7 +381,46 @@ class StorageManager:
                 new_count += await self._upsert_batch(
                     session, target, subdomains, plugin_name
                 )
+        if auto_pipeline:
+            await self._run_auto_pipeline(target)
         return new_count
+
+    async def _run_auto_pipeline(self, target: str) -> None:
+        """Automatically run tool pipeline (subdomains -> dnsx -> httpx) if configured in config.yaml."""
+        try:
+            from core.config_manager import ConfigManager
+            dnsx_cfg = ConfigManager.load_tool_config("dnsx")
+            httpx_cfg = ConfigManager.load_tool_config("httpx")
+
+            if dnsx_cfg is None and httpx_cfg is None:
+                return
+
+            resolved_hosts: list[str] | None = None
+
+            # ── Step 1: Resolve subdomains via dnsx ─────────────────
+            if dnsx_cfg is not None:
+                from tools.dnsx import DnsxTool
+                from core.tool_manager import ToolManager
+                logger.info("Pipeline Step 1: Resolving subdomains for %s with dnsx...", target)
+                tool_mgr = ToolManager()
+                dns_results = await tool_mgr.run_tool(DnsxTool(), target, tool_config=dnsx_cfg)
+                if dns_results:
+                    resolved_hosts = [r["subdomain"] for r in dns_results if r.get("ip")]
+                    logger.info("dnsx resolved %d active subdomains for %s", len(resolved_hosts), target)
+
+            # ── Step 2: Probe resolved subdomains via httpx ─────────
+            if httpx_cfg is not None:
+                from core.services.probe_service import ProbeService
+                probe_service = ProbeService(storage=self)
+                if resolved_hosts is not None:
+                    logger.info("Pipeline Step 2: Probing %d resolved subdomains with httpx...", len(resolved_hosts))
+                    await probe_service.probe_domain(target, tool_config=httpx_cfg, hosts=resolved_hosts)
+                else:
+                    logger.info("Pipeline: Probing subdomains for %s with httpx...", target)
+                    await probe_service.probe_domain(target, tool_config=httpx_cfg)
+
+        except Exception as e:
+            logger.warning("Auto-pipeline execution failed for %s: %s", target, e)
 
     async def delete(self, target: str) -> int:
         """Delete all database records associated with the target domain."""

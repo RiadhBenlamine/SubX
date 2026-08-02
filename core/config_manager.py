@@ -21,6 +21,7 @@ class ConfigManager:
         self.scope: list[str] = []
         self.out_of_scope: list[str] = []
         self.sources: list[str] | None = None
+        self.tools: dict[str, dict] = {}
 
         self._load_env()
         self._load_config_file()
@@ -93,6 +94,25 @@ class ConfigManager:
             if "dbname" in db_cfg or "database" in db_cfg:
                 os.environ["SUBX_DB_NAME"] = str(db_cfg.get("dbname") or db_cfg.get("database"))
 
+        # ── Tool parameters ─────────────────────────────────────
+        tools_raw = data.get("tools", {})
+        if isinstance(tools_raw, dict):
+            for tool_name, tool_cfg in tools_raw.items():
+                if isinstance(tool_cfg, dict):
+                    self.tools[str(tool_name)] = {
+                        str(k): v for k, v in tool_cfg.items()
+                    }
+                elif isinstance(tool_cfg, list):
+                    # Support list-of-mappings format: - key: value
+                    merged: dict = {}
+                    for item in tool_cfg:
+                        if isinstance(item, dict):
+                            merged.update({str(k): v for k, v in item.items()})
+                        elif isinstance(item, str) and ":" in item:
+                            k, _, v = item.partition(":")
+                            merged[k.strip()] = v.strip()
+                    self.tools[str(tool_name)] = merged
+
     @staticmethod
     def _parse_list(data: dict, key: str) -> list[str]:
         value = data.get(key, [])
@@ -121,3 +141,52 @@ class ConfigManager:
     def get_sources(self) -> list[str] | None:
         """Get the allowed plugin sources list filter."""
         return self.sources
+
+    def get_tool_config(self, tool_name: str) -> dict:
+        """Get CLI parameters for a specific tool (e.g. 'httpx').
+
+        Returns a dict of key-value pairs that map to ``-key value`` flags.
+        Returns an empty dict if no config exists for the tool.
+        """
+        return self.tools.get(tool_name, {})
+
+    def is_tool_enabled(self, tool_name: str) -> bool:
+        """Check if a tool is enabled for execution in the tools section."""
+        if tool_name not in self.tools:
+            return False
+        cfg = self.tools[tool_name]
+        if isinstance(cfg, dict) and cfg.get("enabled") is False:
+            return False
+        return True
+
+    def get_all_tool_configs(self) -> dict[str, dict]:
+        """Get all tool configurations."""
+        return self.tools
+
+    @staticmethod
+    def load_tool_config(tool_name: str) -> dict | None:
+        """Auto-discover config file and return tool parameters.
+
+        Searches (in order):
+          1. ``config.yaml`` / ``config.yml`` / ``config.json`` in CWD
+          2. ``~/.config/subx/config.yaml``
+
+        Returns the tool's config dict, or ``None`` if no config found.
+        This is a convenience method so commands like ``http-probe`` and
+        ``db`` can pick up tool params without requiring ``-c``.
+        """
+        candidates = [
+            Path("config.yaml"),
+            Path("config.yml"),
+            Path("config.json"),
+            Path.home() / ".config" / "subx" / "config.yaml",
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                try:
+                    cfg = ConfigManager(str(candidate))
+                    tool_cfg = cfg.get_tool_config(tool_name)
+                    return tool_cfg if tool_cfg else None
+                except Exception:
+                    continue
+        return None

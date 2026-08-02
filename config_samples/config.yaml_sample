@@ -31,11 +31,19 @@ api_keys:
   BEVIGIL_API: <api>
   VIEWDNS_API: <api>
 
-# Optional PostgreSQL Database Configuration
-# db:
-#   host: "127.0.0.1"
-#   user: "postgres"
-#   password: "your_password"
-#   port: 5432
-#   dbname: "subx"
+# PostgreSQL Database Configuration (Main Database)
+db:
+  host: "127.0.0.1"
+  user: "postgres"
+  password: ""
+  port: 5432
+  dbname: "subx"
 
+# Tool parameters — each key becomes a CLI flag (e.g. threads: 50 → -threads 50)
+# tools:
+#   dnsx:
+#     threads: 100
+#   httpx:
+#     threads: 50
+#     rate-limit: 150
+#     timeout: 10

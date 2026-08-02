@@ -87,7 +87,12 @@ class HttpxTool(Tool):
     def _scaled_timeout(self, target_count: int) -> int:
         return max(self.MIN_TIMEOUT, int(target_count * self.PER_HOST_SECONDS))
 
-    async def run(self, targets: list[str], timeout: int | None = None) -> list[dict]:
+    async def run(
+        self,
+        targets: list[str],
+        timeout: int | None = None,
+        tool_config: dict | None = None,
+    ) -> list[dict]:
         if not targets:
             return []
 
@@ -96,9 +101,32 @@ class HttpxTool(Tool):
 
         input_data = "\n".join(targets) + "\n"
 
+        user_config = tool_config or {}
+        args = ["-silent", "-json", "-tech-detect", "-no-color"]
+
+        # High-performance defaults if user didn't specify custom values
+        if "threads" not in user_config and "t" not in user_config:
+            args.extend(["-threads", "100"])
+        if "timeout" not in user_config:
+            args.extend(["-timeout", "5"])
+        if "retries" not in user_config and "r" not in user_config:
+            args.extend(["-retries", "1"])
+
+        # Merge extra CLI flags from config
+        if tool_config:
+            for key, value in tool_config.items():
+                if key == "enabled":
+                    continue
+                flag = f"-{key}" if not key.startswith("-") else key
+                if isinstance(value, bool):
+                    if value:
+                        args.append(flag)
+                else:
+                    args.extend([flag, str(value)])
+
         try:
             stdout, stderr = await self._execute(
-                ["-silent", "-json", "-tech-detect"],
+                args,
                 input_data=input_data,
                 timeout=timeout,
             )

@@ -63,6 +63,15 @@ class EnumCommand(Command):
 
         render_enum_results(result.processed_by_target, save)
 
+        if result.probe_results_by_target:
+            from core.ui.renderers import render_http_probe_summary
+            console.print()
+            info("[bold cyan]Pipeline Execution: Automatic Probing (httpx)[/bold cyan]")
+            console.print()
+            for domain, (probe_res, probe_rows) in result.probe_results_by_target.items():
+                if probe_rows:
+                    render_http_probe_summary(probe_rows, domain)
+
         if export_project is not None and save:
             from core.services.project_service import ProjectService
             from core.ui.renderers import render_project_summary

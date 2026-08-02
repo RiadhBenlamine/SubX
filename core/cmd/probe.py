@@ -62,6 +62,10 @@ class ProbeCommand(Command):
         self.show_banner()
         self.setup_logging()
 
+        # Auto-load httpx tool config from config.yaml (CWD or ~/.config/subx/)
+        from core.config_manager import ConfigManager
+        tool_config = ConfigManager.load_tool_config("httpx")
+
         info(f"Target : [bold white]{domain}[/bold white]")
         console.print()
 
@@ -71,7 +75,7 @@ class ProbeCommand(Command):
             with console.status(
                 f"[cyan]Probing {domain}...[/cyan]", spinner="dots"
             ):
-                results, rows = await service.probe_domain(domain)
+                results, rows = await service.probe_domain(domain, tool_config=tool_config)
         except ToolNotFoundError:
             error(
                 "httpx binary not found. "

@@ -166,7 +166,7 @@ class Tool(ABC):
         return stdout, stderr
 
     @abstractmethod
-    async def run(self, targets: list[str], **kwargs) -> list[dict]:
+    async def run(self, targets: list[str], tool_config: dict | None = None, **kwargs) -> list[dict]:
         """
         Run this tool against the given targets and return normalized results.
 
@@ -178,4 +178,8 @@ class Tool(ABC):
 
         Tools are pure: no storage, no I/O beyond running the binary. Fetching
         input and persisting output is ToolManager's job, not the tool's.
+
+        ``tool_config`` is an optional dict of CLI parameters loaded from the
+        config file's ``tools.<tool_name>`` section. Each key-value pair maps
+        to a ``-key value`` CLI flag.
         """

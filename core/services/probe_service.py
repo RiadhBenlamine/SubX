@@ -8,15 +8,20 @@ from tools.httpx import HttpxTool
 class ProbeService(Service):
     """Orchestrates HTTP liveness probing: run httpx → persist → return rows."""
 
-    async def probe_domain(self, domain: str) -> tuple[list[dict], list[Subdomain]]:
-        """Probe all stored subdomains for a domain.
+    async def probe_domain(
+        self,
+        domain: str,
+        tool_config: dict | None = None,
+        hosts: list[str] | None = None,
+    ) -> tuple[list[dict], list[Subdomain]]:
+        """Probe subdomains for a domain using httpx.
 
-        Returns (raw_results, updated_rows):
-          - raw_results: the httpx output (empty list if nothing stored)
-          - updated_rows: the full subdomain list from storage after probing
+        Returns (raw_results, updated_rows).
         """
         tool_manager = ToolManager()
-        results = await tool_manager.run_tool(HttpxTool(), domain)
+        results = await tool_manager.run_tool(
+            HttpxTool(), domain, tool_config=tool_config, hosts=hosts
+        )
 
         if not results:
             return [], []

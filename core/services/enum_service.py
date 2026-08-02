@@ -17,10 +17,11 @@ class EnumResult:
     sources: list[str] | None
     plugin_names: list[str]
     processed_by_target: dict[str, dict] = field(default_factory=dict)
+    probe_results_by_target: dict[str, tuple[list[dict], list]] = field(default_factory=dict)
 
 
 class EnumService(Service):
-    """Orchestrates subdomain enumeration: config → plugins → process → store."""
+    """Orchestrates subdomain enumeration: config → plugins → process → store → tool pipeline."""
 
     async def run(self, config_path: str, save: bool) -> EnumResult:
         """Parse configuration, launch discovery plugins, collect and persist results."""
@@ -59,6 +60,9 @@ class EnumService(Service):
                 new_count = 0
                 if storage:
                     new_count = await storage.save(processed, target=domain)
+                    if config.is_tool_enabled("httpx"):
+                        rows = await storage.get_all(domain)
+                        result.probe_results_by_target[domain] = ([], rows)
                 result.processed_by_target[domain] = {
                     "processed": processed,
                     "new_count": new_count,
