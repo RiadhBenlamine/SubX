@@ -3,7 +3,7 @@ import aiohttp
 
 from core.plugin import Plugin
 
-_TIMEOUT = aiohttp.ClientTimeout(total=30)
+_TIMEOUT = aiohttp.ClientTimeout(total=10, connect=3, sock_connect=3, sock_read=7)
 
 
 class CrtshPlugin(Plugin):

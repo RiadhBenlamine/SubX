@@ -3,7 +3,7 @@ import aiohttp
 
 from core.plugin import Plugin
 
-_TIMEOUT = aiohttp.ClientTimeout(total=10)
+_TIMEOUT = aiohttp.ClientTimeout(total=5, connect=2, sock_connect=2, sock_read=3)
 
 
 class BgpPlugin(Plugin):

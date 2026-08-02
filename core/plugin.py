@@ -90,9 +90,9 @@ class SafeRequestContext:
                 self.response = resp
                 return resp
             except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
-                if attempt == attempts:
+                if isinstance(e, (asyncio.TimeoutError, socket.gaierror, TimeoutError)) or attempt == attempts:
                     raise PluginUnavailableError(
-                        f"Connection / Timeout error after {attempts} attempts: {e}"
+                        f"Connection / Timeout error: {e}"
                     ) from e
                 await asyncio.sleep(backoff)
                 backoff *= 2.0

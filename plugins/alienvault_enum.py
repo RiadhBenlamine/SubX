@@ -5,7 +5,7 @@ from core.errors import PluginUnavailableError
 from core.plugin import Plugin
 
 _URL = "https://otx.alienvault.com/api/v1/indicators/domain/{domain}/passive_dns"
-_TIMEOUT = aiohttp.ClientTimeout(total=30)
+_TIMEOUT = aiohttp.ClientTimeout(total=10, connect=3, sock_connect=3, sock_read=7)
 
 
 class AlienVaultPlugin(Plugin):
