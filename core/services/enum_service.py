@@ -84,7 +84,13 @@ class EnumService(Service):
         if not processor.has_wildcards(processed):
             return processed
 
-        wc_domains = processor.extract_wildcard_domains(processed)
+        wc_domains = [
+            d for d in processor.extract_wildcard_domains(processed)
+            if d.lower() != domain.lower()
+        ][:5]
+
+        if not wc_domains:
+            return processed
 
         wc_batches = await asyncio.gather(*(pm.execute_plugins(wc) for wc in wc_domains))
 

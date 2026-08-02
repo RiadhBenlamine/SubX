@@ -97,8 +97,13 @@ class Processor:
         return bool(result.wildcards)
 
     def extract_wildcard_domains(self, result: ProcessedResult) -> list[str]:
-        """Extract the wildcard parent domains."""
-        return result.wildcards
+        """Extract clean wildcard parent domains without the '*.' prefix."""
+        clean_domains = []
+        for wc in result.wildcards:
+            d = wc[2:] if wc.startswith("*.") else wc
+            if d and d not in clean_domains:
+                clean_domains.append(d)
+        return clean_domains
 
     def _classify(self, subdomains: list[str]) -> tuple[set[str], set[str], set[str]]:
         clean: set[str] = set()
