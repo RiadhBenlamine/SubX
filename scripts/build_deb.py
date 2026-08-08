@@ -57,8 +57,23 @@ def build_deb_package():
     for d in (debian_dir, usr_bin_dir, python_pkg_dir, doc_dir, man_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    # 2. Copy Control Files
-    shutil.copy2(ROOT_DIR / "debian" / "control", debian_dir / "control")
+    # 2. Generate Binary DEBIAN/control
+    control_content = f"""Package: {PACKAGE_NAME}
+Version: {VERSION}
+Section: net
+Priority: optional
+Architecture: all
+Maintainer: rbn0x00 <benlamineriadh@gmail.com>
+Depends: python3 (>= 3.10), python3-aiohttp, python3-yaml
+Homepage: https://github.com/RiadhBenlamine/SubX
+Description: SUBX - Subdomain Reconnaissance & Asset Management Framework
+ SubX is a fast, asynchronous attack-surface mapping and subdomain enumeration
+ tool designed for security researchers, penetration testers, and bug bounty hunters.
+ It aggregates reconnaissance findings from multiple passive sources (like Shodan,
+ VirusTotal, Censys, and ProjectDiscovery Chaos), filters results against custom target
+ scopes, and manages asset lifecycles inside a PostgreSQL database.
+"""
+    (debian_dir / "control").write_text(control_content, encoding="utf-8")
 
     # 3. Create Executable Launcher /usr/bin/subx
     launcher_file = usr_bin_dir / "subx"
