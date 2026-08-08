@@ -10,7 +10,7 @@ Vcs-Browser: https://github.com/RiadhBenlamine/SubX
 
 Package: subx
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3 (>= 3.10), python3-aiohttp, python3-yaml
+Depends: ${python3:Depends}, ${misc:Depends}, python3 (>= 3.10), postgresql, python3-asyncpg, python3-aiohttp, python3-yaml
 Description: SUBX — Subdomain Reconnaissance & Asset Management Framework
  SubX is a fast, asynchronous attack-surface mapping and subdomain enumeration
  tool designed for security researchers, penetration testers, and bug bounty hunters.

@@ -64,7 +64,7 @@ Section: net
 Priority: optional
 Architecture: all
 Maintainer: rbn0x00 <benlamineriadh@gmail.com>
-Depends: python3 (>= 3.10), python3-aiohttp, python3-yaml
+Depends: python3 (>= 3.10), postgresql, python3-asyncpg, python3-aiohttp, python3-yaml
 Homepage: https://github.com/RiadhBenlamine/SubX
 Description: SUBX - Subdomain Reconnaissance & Asset Management Framework
  SubX is a fast, asynchronous attack-surface mapping and subdomain enumeration
