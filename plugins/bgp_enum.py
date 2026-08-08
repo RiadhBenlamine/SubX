@@ -1,6 +1,7 @@
 """BGP certificate search subdomain enumeration plugin."""
 import aiohttp
 
+from core.errors import PluginAuthError, PluginRateLimitError
 from core.plugin import Plugin
 
 _TIMEOUT = aiohttp.ClientTimeout(total=5, connect=2, sock_connect=2, sock_read=3)
@@ -32,6 +33,8 @@ class BgpPlugin(Plugin):
                         for entry in data.get("domains", []):
                             if isinstance(entry, dict) and (name := entry.get("domain")):
                                 subdomains.append(name)
+        except (PluginAuthError, PluginRateLimitError):
+            raise
         except Exception as e:
             self.logger.warning("BGP fetch failed for '%s': %s", domain, e)
             return []

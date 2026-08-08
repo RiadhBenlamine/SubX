@@ -175,10 +175,8 @@ class ImportService(Service):
         is_pg = target_storage.engine.dialect.name == "postgresql"
         if is_pg:
             from sqlalchemy.dialects.postgresql import insert as pg_insert
-            insert_fn = pg_insert
         else:
             from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-            insert_fn = sqlite_insert
 
         imported_count = 0
         linked_sources = 0
@@ -281,7 +279,7 @@ class ImportService(Service):
                 result = await session.execute(
                     select(Subdomain.id, Subdomain.subdomain).where(
                         Subdomain.target == target,
-                        Subdomain.subdomain.in_(batch_names),
+                        Subdomain.subdomain.in_(batch_names),  # pylint: disable=no-member
                     )
                 )
                 for sub_id, name in result.all():

@@ -1,7 +1,7 @@
 """AnubisDB subdomain enumeration plugin."""
 import aiohttp
 
-from core.errors import PluginUnavailableError
+from core.errors import PluginAuthError, PluginRateLimitError, PluginUnavailableError
 from core.plugin import Plugin
 
 _TIMEOUT = aiohttp.ClientTimeout(total=8, connect=3, sock_connect=3, sock_read=5)
@@ -17,6 +17,8 @@ class AnubisDbPlugin(Plugin):
             async with self.session(timeout=_TIMEOUT) as session:
                 async with session.get(url) as resp:
                     data = await resp.json()
+        except (PluginAuthError, PluginRateLimitError):
+            raise
         except Exception as e:
             raise PluginUnavailableError(f"AnubisDB connection or parse error: {e}") from e
 

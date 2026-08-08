@@ -55,7 +55,7 @@ class PluginManager:
         self,
         target: str,
         progress_cb=None,
-        status_cb=None,
+        subdomain_cb=None,
     ) -> list[PluginResult]:
         """Execute all loaded plugins concurrently against a target domain.
 
@@ -66,6 +66,12 @@ class PluginManager:
 
         The per-plugin timeout defaults to 60 seconds and can be overridden by
         setting ``plugin_timeout`` (in seconds) in the config dict.
+
+        Parameters
+        ----------
+        subdomain_cb : callable, optional
+            Called with ``(plugin_name, subdomains_list)`` every time a plugin
+            finishes and returns subdomains, enabling real-time live output.
         """
         if not self.loaded_plugins:
             logger.warning("No plugins loaded. Call load_plugins() first.")
@@ -114,8 +120,11 @@ class PluginManager:
                     progress_cb(
                         completed, total_active, f"{tgt} — {name} done"
                     )
+                # Fire live subdomain callback
+                if subdomain_cb and isinstance(res, list) and res:
+                    subdomain_cb(name, res)
                 return res
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError as exc:
                 completed += 1
                 logger.warning("[%s] timed out after %.0fs.", name, plugin_timeout)
                 if progress_cb:
@@ -124,7 +133,7 @@ class PluginManager:
                     )
                 raise PluginUnavailableError(
                     f"Plugin query timed out after {plugin_timeout:.0f}s."
-                )
+                ) from exc
 
         # Run only active plugins concurrently
         outcomes = await asyncio.gather(

@@ -24,7 +24,7 @@ def get_version() -> str:
             return ver
     except PackageNotFoundError:
         pass
-    return "2.0.4"
+    return "2.1.0"
 
 
 def _is_newer_version(current: str, latest: str) -> bool:

@@ -49,9 +49,7 @@ class ImportSqliteCommand(Command):
                 summary = await service.import_sqlite(sqlite_file, target_db_url=target_db_url)
         except FileNotFoundError as e:
             error(str(e))
-            return
         except Exception as e:  # pylint: disable=broad-exception-caught
             error(f"Failed to import database: {e}")
-            return
 
         render_import_summary(summary)

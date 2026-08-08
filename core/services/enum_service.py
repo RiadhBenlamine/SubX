@@ -28,7 +28,8 @@ class EnumService(Service):
         config_path: str,
         save: bool,
         progress_cb=None,
-        status_cb=None,
+        subdomain_cb=None,
+        domain_started_cb=None,
     ) -> EnumResult:
         """Parse configuration, launch discovery plugins, collect and persist results."""
         config = self._load_config(config_path)
@@ -59,13 +60,20 @@ class EnumService(Service):
             # if a plugin trips on domain 1, it is skipped for domains 2–N.
             domain_results = []
             for domain in scope:
-                dr = await self._run_domain(pm, processor, domain, progress_cb=progress_cb, status_cb=status_cb)
+                if domain_started_cb:
+                    domain_started_cb(domain)
+                dr = await self._run_domain(pm, processor, domain, progress_cb=progress_cb, subdomain_cb=subdomain_cb)
                 domain_results.append(dr)
 
             for domain, processed in zip(scope, domain_results):
                 new_count = 0
                 if storage:
-                    new_count = await storage.save(processed, target=domain)
+                    new_count = await storage.save(
+                        processed,
+                        target=domain,
+                        progress_cb=progress_cb,
+                        total_plugins=len(pm.loaded_plugins),
+                    )
                     if config.is_tool_enabled("httpx"):
                         rows = await storage.get_all(domain)
                         result.probe_results_by_target[domain] = ([], rows)
@@ -84,9 +92,9 @@ class EnumService(Service):
         processor: Processor,
         domain: str,
         progress_cb=None,
-        status_cb=None,
+        subdomain_cb=None,
     ) -> ProcessedResult:
-        raw = await pm.execute_plugins(domain, progress_cb=progress_cb, status_cb=status_cb)
+        raw = await pm.execute_plugins(domain, progress_cb=progress_cb, subdomain_cb=subdomain_cb)
         processed = processor.process(raw)
 
         if not processor.has_wildcards(processed):
@@ -99,9 +107,6 @@ class EnumService(Service):
 
         if not wc_domains:
             return processed
-
-        if status_cb:
-            status_cb(f"Processing {len(wc_domains)} wildcard domain(s)...")
 
         async def _run_wc(wc: str):
             try:

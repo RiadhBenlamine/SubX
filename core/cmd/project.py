@@ -50,18 +50,14 @@ class ProjectCommand(Command):
             cfg_file = Path(config_path)
             if not cfg_file.exists():
                 error(f"No domain specified via '-d' and config file not found: '{config_path}'")
-                info("Specify a target domain with '-d <domain>' or provide a valid config file with '-c <path>'.")
-                return
             try:
                 cfg = ConfigManager(config_path)
                 domains = cfg.get_scope()
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
                 error(f"Failed to load target domains from config file '{config_path}': {e}")
-                return
 
         if not domains:
             error("No target domains found to process.")
-            return
 
         info(f"Target Domains : [bold white]{', '.join(domains)}[/bold white]")
         info(f"Output Dir     : [bold white]{out_dir}/[/bold white]")

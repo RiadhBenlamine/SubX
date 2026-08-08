@@ -1,361 +1,307 @@
-# SUBX 🚀 — Subdomain Recon Framework
+# SUBX — Subdomain Recon Framework
 
-`SUBX` is a fast, asynchronous attack-surface mapping and subdomain enumeration tool designed for security researchers, penetration testers, and bug bounty hunters.
+A fast, async subdomain enumeration and asset management toolkit for security researchers, pentesters, and bug bounty hunters.
 
-It aggregates reconnaissance findings from multiple passive sources (like Shodan, VirusTotal, Censys, and ProjectDiscovery Chaos), filters results against custom target scopes, and manages the lifecycle of discovered assets inside a centralized SQLite database. 
-
-It also supports integrated network active checks (like HTTP liveness, response codes, and HTML titles probing) utilizing external Go tools like `httpx`.
+SUBX pulls subdomains from 12 passive sources (Shodan, VirusTotal, Censys, crt.sh, Chaos, etc.), filters them against your scope, stores everything in a database, and optionally probes for HTTP liveness with `httpx`. It's built to fit into real-world recon workflows without getting in the way.
 
 ---
 
-## Architecture Blueprint
+## How it works
 
 ```
                       ┌─────────────────────────────────┐
-                      │           Typer CLI             │
+                      │               CLI               │
                       └────────────────┬────────────────┘
                                        │
                                        ▼
                       ┌─────────────────────────────────┐
-                      │         Services Layer          │
+                      │         Services Layer           │
                       └──────┬───────────────────┬──────┘
                              │                   │
                              ▼                   ▼
                       ┌──────────────┐   ┌──────────────┐
-                      │ PluginManager│   │ ToolManager  │
+                      │PluginManager │   │ ToolManager   │
                       └──────┬───────┘   └──────┬───────┘
                              │                   │
                              ▼                   ▼
                       ┌──────────────┐   ┌──────────────┐
-                      │ Passive APIs │   │ Active Tools │
-                      │  (12 sources)│   │   (httpx)    │
+                      │ Passive APIs │   │ Active Tools  │
+                      │ (12 sources) │   │   (httpx)     │
                       └──────────────┘   └──────────────┘
 ```
 
----
-
-## Features
-
-* 🚀 **Asynchronous & Concurrent Execution**: Enumerates across all APIs concurrently using Python's `asyncio`.
-* 🔌 **Dynamic Plugin System**: Auto-discovers and registers passive query engines dropped inside the `plugins/` directory.
-* 🛡️ **Scope Isolation**: Prevents out-of-scope leakages by verifying targets against precise inclusions and exclusions defined in yaml format.
-* 🗄️ **Persistent Asset Database**: Incremental saving to local SQLite via SQLModel/SQLAlchemy. Keeps track of `first_seen`, `last_seen`, and `last_seen_alive` timestamps.
-* ⚡ **Integrated Probe & Tech Detection**: Built-in orchestration for probing stored domains using `httpx` with automatic web technology stack detection (e.g., Nginx, React, Cloudflare).
-* 🕒 **Historical Liveness Tracking**: Preserves `last_seen_alive` timestamps when domains go down, allowing historical records of when a host was last active.
-* 📁 **Structured Plain-Text Project Layout**: Automatically exports organized plain-text recon directories per target domain (`<domain>/recon/subdomains.txt`, `alive.txt`, `dead.txt`, `techs.txt`, `ips.txt`, `status.txt`, `sources.txt`).
-* 💻 **Cross-Platform Tool Engine**: Seamless binary resolution across Windows, Linux (Kali/Debian), and macOS. Automatically checks bundled binaries, system `PATH`, and `~/go/bin`.
-* 📊 **Rich Output Interfaces**: Visually appealing terminals powered by `Rich` tables, statuses, and panels.
+Plugins run concurrently via asyncio. Results are deduplicated, scope-filtered, and persisted with `first_seen` / `last_seen` timestamps so you can track changes over time.
 
 ---
 
-## Passive Reconnaissance Sources
+## What's included
 
-SubX queries the following platforms for subdomain listings.
+- **Async everything** — all API calls run concurrently, not sequentially
+- **Plugin auto-discovery** — drop a `.py` file in `plugins/` and it's loaded automatically
+- **Scope enforcement** — in-scope / out-of-scope filtering from your config
+- **Persistent storage** — SQLite by default, PostgreSQL supported natively
+- **HTTP probing** — built-in httpx integration for liveness, status codes, titles, and tech detection
+- **Historical tracking** — `first_seen`, `last_seen`, and `last_seen_alive` timestamps
+- **Project export** — auto-generated `recon/` directories with `subdomains.txt`, `alive.txt`, `dead.txt`, etc.
+- **Cross-platform** — works on Linux, macOS, and Windows
+- **Live progress** — real-time streaming of discovered subdomains during enumeration
 
-| Source Engine | Requires API Key | Key Name in Config |
+---
+
+## Passive Sources
+
+| Source | API Key Required | Config Key |
 |---|---|---|
-| **AlienVault OTX** | Yes | `OTX_API` |
-| **AnubisDB** | No | — |
-| **BeVigil** | Yes | `BEVIGIL_API` |
-| **BGP Tools** | No | — |
-| **Censys** | Yes | `CENSYS_API` |
-| **Chaos (ProjectDiscovery)** | Yes | `CHAOS_API` |
-| **crt.sh** | No | — |
-| **HackerTarget** | No | — |
-| **Shodan** | Yes | `SHODAN_API` |
-| **urlscan.io** | Yes | `URLSCAN_API` |
-| **ViewDNS** | Yes | `VIEWDNS_API` |
-| **VirusTotal** | Yes | `VIRUSTOTAL_API` |
-
----
-
-## Installation & Setup
-
-### Prerequisites
-* Python **>= 3.10**
-* [uv](https://github.com/astral-sh/uv) (Recommended for simple execution without manual virtualenvs setup)
-
-### 1. Clone & Install Dependencies
-Clone the repository and install requirements:
-```bash
-git clone https://github.com/RiadhBenlamine/SubX.git
-cd SubX
-python -m pip install -e .
-```
-
-### 2. Configure Settings & API Keys
-Create a config file (e.g., `config.yaml`) in your workspace. You can use the template inside [config_samples/config.yaml_sample](file:///c:/Users/DELL/PycharmProjects/SubX/config_samples/config.yaml_sample) as a starting point.
-
-```yaml
-# Target domains you want to enumerate
-scope:
-  - example.com
-  - target.org
-
-# Exclude specific domains/subdomains from results
-out_of_scope:
-  - testing.example.com
-  - dev.target.org
-
-# Omit to run all discoverable plugins, or specify names to restrict runs
-sources:
-  - ShodanPlugin
-  - CrtshPlugin
-
-# API keys for authenticating with passive services
-api_keys:
-  SHODAN_API: "YOUR_SHODAN_KEY_HERE"
-  VIRUSTOTAL_API: "YOUR_VIRUSTOTAL_KEY_HERE"
-  OTX_API: "YOUR_OTX_KEY_HERE"
-  URLSCAN_API: "YOUR_URLSCAN_KEY_HERE"
-  CHAOS_API: "YOUR_CHAOS_KEY_HERE"
-  BEVIGIL_API: "YOUR_BEVIGIL_KEY_HERE"
-  VIEWDNS_API: "YOUR_VIEWDNS_KEY_HERE"
-  CENSYS_API: "YOUR_CENSYS_KEY_HERE"
-```
-
-> [!NOTE]
-> Alternatively, you can store API keys as environment variables inside a file at `~/.config/subx/.env` (e.g., `SHODAN_API=key`). Projects-specific `config.yaml` values always override global `.env` settings.
+| AlienVault OTX | Yes | `OTX_API` |
+| AnubisDB | No | — |
+| BeVigil | Yes | `BEVIGIL_API` |
+| BGP Tools | No | — |
+| Censys | Yes | `CENSYS_API` |
+| Chaos (ProjectDiscovery) | Yes | `CHAOS_API` |
+| crt.sh | No | — |
+| HackerTarget | No | — |
+| Shodan | Yes | `SHODAN_API` |
+| urlscan.io | Yes | `URLSCAN_API` |
+| ViewDNS | Yes | `VIEWDNS_API` |
+| VirusTotal | Yes | `VIRUSTOTAL_API` |
 
 ---
 
 ## Installation
 
-### Option 1: Install from PyPI
+### From PyPI (recommended)
+
 ```bash
 pip install subx-recon
 ```
 
-### Option 2: Install via Debian Package (.deb) (Debian, Ubuntu, Kali Linux)
-Download the `.deb` package from the [Latest Release](https://github.com/RiadhBenlamine/SubX/releases) and install via `apt`:
+### From source
+
 ```bash
-sudo apt install ./subx_2.0.0-1_all.deb
+git clone https://github.com/RiadhBenlamine/SubX.git
+cd SubX
+pip install -e .
 ```
 
-### Option 3: Install from Source
+Or with [uv](https://github.com/astral-sh/uv):
+
 ```bash
 git clone https://github.com/RiadhBenlamine/SubX.git
 cd SubX
 uv sync
 ```
 
+### Debian/Ubuntu/Kali (.deb)
+
+Download the `.deb` from the [latest release](https://github.com/RiadhBenlamine/SubX/releases) and install:
+
+```bash
+sudo apt install ./subx_2.1.0-1_all.deb
+```
+
+**Requirements:** Python >= 3.10
+
 ---
 
-## Usage Guide
+## Setup
 
-All CLI subcommands can be executed directly using `subx`:
+Create a `config.yaml` (there's a sample in `config_samples/`):
+
+```yaml
+scope:
+  - example.com
+  - target.org
+
+out_of_scope:
+  - testing.example.com
+
+# Leave blank to run all plugins, or list specific ones
+sources:
+  - ShodanPlugin
+  - CrtshPlugin
+
+api_keys:
+  SHODAN_API: "your-key-here"
+  VIRUSTOTAL_API: "your-key-here"
+  OTX_API: "your-key-here"
+  URLSCAN_API: "your-key-here"
+  CHAOS_API: "your-key-here"
+  BEVIGIL_API: "your-key-here"
+  VIEWDNS_API: "your-key-here"
+  CENSYS_API: "your-key-here"
+```
+
+You can also keep API keys in `~/.config/subx/.env` (e.g. `SHODAN_API=your-key`). Config file values take priority.
+
+---
+
+## Usage
+
 ```bash
 subx [COMMAND] [OPTIONS]
 
-# Or running from source checkout:
+# From source:
 uv run python main.py [COMMAND] [OPTIONS]
 ```
 
-### 1. PostgreSQL Database Initialization (`init-db`)
-Initialize your PostgreSQL database and set PostgreSQL as the default database for SubX:
+### Enumerate subdomains
 
 ```bash
-subx init-db
-# OR non-interactively via CLI flags:
-subx init-db -H 127.0.0.1 -u postgres -P "mypassword" -p 5432 -d subx
+subx enum -c config.yaml
 ```
 
-Running `subx init-db` automatically:
-1. Connects to PostgreSQL and creates the database `subx` if missing.
-2. Initializes schema tables (`subx_subdomain`, `subx_subdomain_sources`).
-3. Saves settings to `~/.config/subx/config.yaml` so **all future SubX commands default to PostgreSQL**.
+Runs all configured plugins against your scope targets. Results are saved to the database by default. Subdomains stream to your terminal in real-time as each plugin returns results.
 
-### 2. Subdomain Enumeration (`enum`)
-Start passive subdomain enumeration for target domains configured in your configuration file.
+Options:
+- `-c`, `--config` — path to your config file (required)
+- `--save` / `--no-save` — toggle database persistence (default: save)
+- `--project`, `-p` — auto-export project directory after scan
+- `--debug` — verbose logging
 
-```bash
-subx enum -c ./config.yaml
-```
-
-**Options:**
-* `-c`, `--config` (Required): Path to your YAML or JSON config file.
-* `--save` / `--no-save`: Toggle database persistence (Defaults to `--save`).
-
-### 2. Probe & Detect Technologies (`http-probe`)
-Check HTTP liveness, response status codes, page titles, and **web technology stacks** for subdomains stored in the database.
+### Probe for HTTP liveness
 
 ```bash
 subx http-probe -d example.com
 ```
 
-This command reads subdomains from the database, runs `httpx` with `-tech-detect` under the hood, and updates the database records with status codes (`200`, `404`), title tags, detected technologies (e.g., `Nginx, React, Cloudflare`), and timestamps (`last_seen` and `last_seen_alive`).
+Reads subdomains from the database, runs `httpx` with tech detection, and updates records with status codes, titles, technologies, and timestamps.
 
-**Options:**
-* `-d`, `--domain` (Required): Target domain to probe.
-* `-oN <file>`: Output alive subdomain hostnames to a line-separated file.
-* `-oX '<separator>:<file>'`: Output alive subdomains with a custom separator (e.g. `';:alive.txt'`).
-* `-oT <file>`, `--output-tech <file>`: Save alive subdomains alongside their detected technology stack (e.g. `app.example.com [Nginx, React]`).
+Options:
+- `-d`, `--domain` — target domain (required)
+- `-oN <file>` — save alive subdomains, one per line
+- `-oX '<sep>:<file>'` — custom separator output (e.g. `';:alive.txt'`)
+- `-oT <file>` — save subdomains with tech stack (e.g. `app.example.com [Nginx, React]`)
 
-### 3. View & Query Assets (`db`)
-List, filter, query, export, or delete records from the local asset database.
+### Query the database
 
-#### Summary of All Assets
 ```bash
+# Show all tracked targets
 subx db
-```
-Lists targets currently tracked in the database along with total subdomain counts and timestamps.
 
-#### List Subdomains for a Target Domain
-```bash
+# List subdomains for a target
 subx db -d example.com
-```
 
-#### List Subdomains with HTTP & Technology Details
-View web liveness status, HTTP response status, page titles, detected tech stack, and `LAST ALIVE` timestamps:
-```bash
+# Show web details (alive status, HTTP code, title, tech)
 subx db -d example.com --web
-```
 
-#### Filter Results
-Filter domains discovered by a specific source engine:
-```bash
+# Filter by plugin source
 subx db -d example.com --filter-plugin ShodanPlugin
-```
 
-Filter subdomains running a specific technology (e.g. `Nginx`, `WordPress`, `Cloudflare`):
-```bash
+# Filter by technology
 subx db -d example.com --filter-tech Nginx
-```
 
-Filter subdomains that are currently **ALIVE** or currently **DOWN**:
-```bash
-# Only live subdomains
+# Only alive / only dead
 subx db -d example.com --alive
-
-# Only subdomains currently down (preserves LAST ALIVE timestamp)
 subx db -d example.com --down --web
-```
 
-Filter subdomains discovered after a specific date:
-```bash
-subx db -d example.com --new-since 2026-06-01
-```
+# Subdomains discovered after a date
+subx db -d example.com --new-since 2025-01-01
 
-#### Custom Raw Queries
-Execute raw SQL queries against your assets:
-```bash
-subx db -C "SELECT subdomain, alive, status_code, tech, last_seen_alive FROM subdomain WHERE target='example.com' AND alive=1"
-```
+# Raw SQL query
+subx db -C "SELECT subdomain, status_code, tech FROM subx_subdomain WHERE target='example.com' AND alive=1"
 
-#### Clean Up (Delete Target Records)
-```bash
+# Delete all records for a target
 subx db -d example.com --delete
-```
 
-#### Export Subdomains & Tech to Files
-Save filtered query results to a file:
-```bash
-# Line-separated subdomains
+# Export to file
 subx db -d example.com --alive -oN live_subs.txt
-
-# Custom separator
-subx db -d example.com --filter-tech Nginx -oX ';:nginx_subs.txt'
-
-# Export subdomains with technology stack
-subx db -d example.com --web -oT tech_export.txt
 ```
 
-### 4. Project Directory Export (`project` & `--project`)
-Set up a structured, plain-text recon directory layout for your target domains.
+### Export project directories
 
 ```bash
 subx project -d example.com
 ```
 
-This creates the following organized folder structure on disk:
+Creates a structured recon folder:
+
 ```
 projects/
   └── example.com/
         └── recon/
-              ├── subdomains.txt   # All discovered subdomains
-              ├── alive.txt        # Verified ALIVE subdomains
-              ├── dead.txt         # Subdomains currently DOWN
-              ├── techs.txt        # Subdomains with detected tech stack
-              ├── status.txt       # Subdomains with HTTP status & title
-              ├── ips.txt          # Subdomains with IP addresses
-              └── sources.txt      # Subdomains with discovery sources
+              ├── subdomains.txt
+              ├── alive.txt
+              ├── dead.txt
+              ├── techs.txt
+              ├── status.txt
+              ├── ips.txt
+              └── sources.txt
 ```
 
-You can also pass `--project` / `-p` during `enum`, `http-probe`, or `db` commands to automatically generate/sync the project folder structure:
-```bash
-# Auto-generate project folder after passive enumeration
-subx enum -c ./config.yaml --project
+You can also pass `--project` / `-p` to `enum`, `http-probe`, or `db` commands to auto-generate this after any operation.
 
-# Auto-generate project folder after HTTP probing
-subx http-probe -d example.com --project
+### Initialize PostgreSQL
+
+```bash
+# Interactive setup
+subx init-db
+
+# Non-interactive
+subx init-db -H 127.0.0.1 -u postgres -P "mypassword" -d subx
 ```
 
-**Options:**
-* `-d`, `--domain` (Required): Target domain name.
-* `-o`, `--output-dir`: Base directory for projects (Default: `projects`).
+This creates the database, sets up schema tables, and saves the connection to `~/.config/subx/config.yaml` so all future commands use PostgreSQL.
 
-### 5. PostgreSQL Database Engine Support
-SubX natively supports both **SQLite** (default) and **PostgreSQL** database engines.
-
-To connect SubX to a PostgreSQL database, set the `DATABASE_URL` environment variable:
-```bash
-export DATABASE_URL="postgresql+asyncpg://user:password@localhost:5432/subx"
-```
-
-SubX will automatically create and manage all schema tables, indexes, constraints, and dialect-agnostic upsert statements on PostgreSQL.
-
-### 6. Import SQLite Database into PostgreSQL (`import-sqlite`)
-Migrate an existing SQLite database (e.g. `subx.db`) into your PostgreSQL database:
+### Import from SQLite
 
 ```bash
-# Import into active PostgreSQL database (reads DATABASE_URL env var)
+# Into your configured database
 subx import-sqlite subx.db
 
-# Import with explicit target PostgreSQL URL
+# With explicit target
 subx import-sqlite subx.db -t "postgresql+asyncpg://user:pass@localhost:5432/subx"
 ```
 
-This utility migrates all stored target domains, subdomains, status codes, page titles, tech tags, host IPs, first/last seen timestamps, and plugin source linkages cleanly.
+Migrates all targets, subdomains, probe results, timestamps, and source linkages.
 
-### 7. Database Migrations (`dev-migrate`)
-As SubX development progresses and database models change, migrate your database schema to keep it up to date:
+### Database migrations
 
 ```bash
 subx dev-migrate
 ```
 
-This command:
-1. Creates a safety backup file: `subx.backup-<timestamp>.db`.
-2. Inspects your existing SQLite tables and compares them to the latest Python models.
-3. Automatically alters tables to add new, nullable columns safely.
-
-**Options:**
-* `--no-backup`: Skip creating the safety backup database before migrating.
+Compares your database schema against current models and adds any missing columns. Creates a backup first by default (skip with `--no-backup`).
 
 ---
 
-## Release Automation
+## PostgreSQL support
 
-SubX includes a release script that automates version bumping, running unit tests, building Python wheels/sdist and Debian packages, uploading to PyPI, creating Git release tags, and pushing to GitHub:
+SUBX works with SQLite out of the box. To switch to PostgreSQL, either:
+
+1. Run `subx init-db` (recommended), or
+2. Set the `DATABASE_URL` environment variable:
 
 ```bash
-# Bump patch version (e.g. 2.0.2 -> 2.0.3) and publish:
-python scripts/release.py patch
-
-# Bump minor version (e.g. 2.0.2 -> 2.1.0) and publish:
-python scripts/release.py minor
-
-# Set specific release version (e.g. 2.0.5) and publish:
-python scripts/release.py 2.0.5
+export DATABASE_URL="postgresql+asyncpg://user:password@localhost:5432/subx"
 ```
+
+All commands work identically on both backends.
 
 ---
 
-## Development & Extension
-If you want to contribute, build custom components, add discovery APIs, or write command wrappers, see the [Developer Documentation (DEV_DOCS.md)](file:///c:/Users/DELL/PycharmProjects/SubX/DEV_DOCS.md) for full API reference, layering rules, and extension workflows.
+## Release automation
+
+```bash
+# Bump patch (2.0.19 → 2.0.20)
+python scripts/release.py patch
+
+# Bump minor (2.0.19 → 2.1.0)
+python scripts/release.py minor
+
+# Set exact version
+python scripts/release.py 2.1.0
+```
+
+Handles version bumping, tests, wheel/sdist/deb builds, PyPI upload, git tagging, and GitHub push.
+
+---
+
+## Contributing
+
+See [DEV_DOCS.md](DEV_DOCS.md) for the architecture guide, API reference, layering rules, and how to add new plugins or tool wrappers.
 
 ---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE) for details.

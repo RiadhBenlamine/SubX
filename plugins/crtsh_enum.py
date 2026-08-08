@@ -1,6 +1,7 @@
 """crt.sh CT search subdomain enumeration plugin."""
 import aiohttp
 
+from core.errors import PluginAuthError, PluginRateLimitError
 from core.plugin import Plugin
 
 _TIMEOUT = aiohttp.ClientTimeout(total=10, connect=3, sock_connect=3, sock_read=7)
@@ -30,6 +31,8 @@ class CrtshPlugin(Plugin):
                                     for sub in name_val.split("\n"):
                                         if sub_clean := sub.strip():
                                             subdomains.append(sub_clean)
+        except (PluginAuthError, PluginRateLimitError):
+            raise
         except Exception as e:
             self.logger.warning("crt.sh fetch failed for '%s': %s", domain, e)
             return []

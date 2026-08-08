@@ -1,13 +1,12 @@
-"""Storage manager for executing database operations, upserts, queries, and migrations."""
+"""PostgreSQL storage manager for executing database operations, upserts, queries, and migrations."""
 import asyncio
 import logging
 import os
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import delete, func, inspect, text, update
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import delete, func, inspect, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import selectinload, sessionmaker
 from sqlmodel import SQLModel, select
@@ -18,6 +17,11 @@ from core.models import ProcessedResult
 logger = logging.getLogger(__name__)
 
 DEFAULT_DATABASE_URL = "postgresql+asyncpg://postgres@127.0.0.1:5432/subx"
+
+# PostgreSQL parameter limit per query is 32,767 ($32767).
+# 5000 rows × ~6 columns = ~30,000 parameters, staying comfortably under the limit
+# while keeping chunk payload size efficient for high-throughput batch operations.
+PG_CHUNK_SIZE = 5000
 
 
 def _load_pg_url_from_config_files() -> str | None:
@@ -49,7 +53,7 @@ def _load_pg_url_from_config_files() -> str | None:
 
 
 def normalize_db_url(db_url: str | None = None) -> str:
-    """Resolve and normalize database URL for SQLite or PostgreSQL engines."""
+    """Resolve and normalize database URL for PostgreSQL engine."""
     if db_url:
         url = db_url
     elif os.environ.get("DATABASE_URL"):
@@ -79,7 +83,7 @@ def normalize_db_url(db_url: str | None = None) -> str:
 
 
 class StorageManager:
-    """Manages raw connection pooling, transactions, dynamic migrations, and schema definition."""
+    """Manages PostgreSQL connection pooling, transactions, dynamic migrations, and schema definition."""
 
     def __init__(self, db_url: str | None = None) -> None:
         self.db_url = normalize_db_url(db_url)
@@ -91,35 +95,24 @@ class StorageManager:
         )
         self._init_lock = asyncio.Lock()
         self._initialized = False
-        self._ro_engine = None
 
     async def init(self) -> None:
-        """Initialize connection engines, create database 'subx' on PG if missing, and create schema tables."""
+        """Initialize connection engine, create database 'subx' on PostgreSQL if missing, and create schema tables."""
         async with self._init_lock:
             if self._initialized:
                 return
 
-            if self.engine.dialect.name == "postgresql":
-                try:
-                    await self._ensure_pg_database_exists()
-                    async with self.engine.begin() as conn:
-                        await conn.run_sync(SQLModel.metadata.create_all)
-                    self._initialized = True
-                    return
-                except Exception as e:
-                    logger.error("PostgreSQL database connection failed: %s", e)
-                    raise RuntimeError(
-                        f"PostgreSQL connection error: {e}. "
-                        "Please verify PostgreSQL is running and credentials in config.yaml / environment variables are correct."
-                    ) from e
-
             try:
+                await self._ensure_pg_database_exists()
                 async with self.engine.begin() as conn:
                     await conn.run_sync(SQLModel.metadata.create_all)
                 self._initialized = True
-            except SQLAlchemyError as e:
-                logger.error("Failed to initialize database: %s", e)
-                raise
+            except Exception as e:
+                logger.error("PostgreSQL database connection failed: %s", e)
+                raise RuntimeError(
+                    f"PostgreSQL connection error: {e}. "
+                    "Please verify PostgreSQL is running and credentials in config.yaml / environment variables are correct."
+                ) from e
 
     async def _ensure_pg_database_exists(self) -> None:
         """Ensure PostgreSQL database 'subx' exists on the target server before table creation."""
@@ -148,7 +141,7 @@ class StorageManager:
     async def update_results(
         self, target: str, results: list[dict]
     ) -> int:
-        """Persist any tool's normalized output onto existing Subdomain rows.
+        """Persist any tool's normalized output onto existing Subdomain rows in PostgreSQL.
 
         Generic counterpart to update_httpx_results: instead of a hardcoded
         column allowlist, this writes whatever keys in each dict match a
@@ -181,30 +174,26 @@ class StorageManager:
         } - protected
 
         updated = 0
-        chunk_size = 450
         now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-        is_pg = self.engine.dialect.name == "postgresql"
-        if is_pg:
-            from sqlalchemy.dialects.postgresql import insert as pg_insert
-            insert_fn = pg_insert
-        else:
-            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-            insert_fn = sqlite_insert
-
         async with self._session() as session, session.begin():
-            for i in range(0, len(results), chunk_size):
-                batch = results[i : i + chunk_size]
+            for i in range(0, len(results), PG_CHUNK_SIZE):
+                batch = results[i : i + PG_CHUNK_SIZE]
+                seen_in_batch: set[str] = set()
                 batch_values = []
                 for row in batch:
                     sub = row.get("subdomain")
                     if not sub:
                         continue
+                    sub_clean = sub.strip()
+                    if sub_clean in seen_in_batch:
+                        continue
+                    seen_in_batch.add(sub_clean)
                     values = {
                         k: v for k, v in row.items() if k in writable_columns and v is not None
                     }
                     values["target"] = target
-                    values["subdomain"] = sub
+                    values["subdomain"] = sub_clean
                     values["source_plugin"] = "Tool"
                     values["first_seen"] = now
                     values["last_seen"] = now
@@ -229,7 +218,7 @@ class StorageManager:
                 all_keys.discard("first_seen")
                 all_keys.discard("source_plugin")
 
-                stmt = insert_fn(Subdomain).values(batch_values)
+                stmt = pg_insert(Subdomain).values(batch_values)
                 update_cols = {k: getattr(stmt.excluded, k) for k in all_keys}
                 stmt = stmt.on_conflict_do_update(
                     index_elements=["target", "subdomain"],
@@ -241,21 +230,18 @@ class StorageManager:
 
     # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     async def migrate(self, backup: bool = True) -> list[str]:
-        """Compare the model schema against the live DB and add missing columns,
+        """Compare the PostgreSQL model schema against the live DB and add missing columns,
         and ensure unique constraints and join tables are properly migrated.
         """
         self._ensure_initialized()
 
-        db_path = self._resolve_db_path()
-        if db_path and backup and db_path.exists():
-            backup_path = db_path.with_suffix(
-                f".backup-{datetime.now(tz=timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.db"
+        if backup:
+            logger.warning(
+                "Automatic database backup is skipped on PostgreSQL. "
+                "Please perform backups externally using `pg_dump` or your PostgreSQL backup procedures."
             )
-            shutil.copy2(db_path, backup_path)
-            logger.info("Backup created: %s", backup_path)
 
         table_name = "subx_subdomain"
-        sources_table = "subx_subdomain_sources"
 
         # 1. Create any missing tables (like subx_subdomain_sources)
         async with self.engine.begin() as conn:
@@ -306,103 +292,63 @@ class StorageManager:
                         has_unique_constraint = True
                         break
 
-        # 4. If missing unique constraint, recreate table and migrate data
+        # 4. If missing unique constraint, add PostgreSQL-native UNIQUE constraint
         if not has_unique_constraint:
             logger.info(
-                f"Migrating {table_name} table to add unique constraint on (target, subdomain)"
+                "Adding PostgreSQL unique constraint uq_target_subdomain on %s(target, subdomain)...",
+                table_name,
             )
-            async with self.engine.connect() as conn:
-                existing_cols_list = await conn.run_sync(
-                    lambda sync_conn: inspect(sync_conn).get_columns(table_name)
-                )
-
-            col_defs = []
-            for col in existing_cols_list:
-                col_name = col["name"]
-                col_type = str(col["type"])
-                nullable = "NULL" if col.get("nullable", True) else "NOT NULL"
-                if col_name == "id":
-                    col_defs.append("id INTEGER PRIMARY KEY AUTOINCREMENT")
-                else:
-                    col_defs.append(f'"{col_name}" {col_type} {nullable}')
-            col_defs.append("UNIQUE(target, subdomain)")
-
-            ddl_create = f"CREATE TABLE {table_name}_new ({', '.join(col_defs)});"
-
-            select_fields = []
-            for col in existing_cols_list:
-                col_name = col["name"]
-                if col_name == "id":
-                    continue
-                if col_name == "first_seen":
-                    select_fields.append("MIN(first_seen) as first_seen")
-                elif col_name == "last_seen":
-                    select_fields.append("MAX(last_seen) as last_seen")
-                else:
-                    select_fields.append(f'"{col_name}"')
-
-            col_names_str = ", ".join(
-                f'"{col["name"]}"' for col in existing_cols_list if col["name"] != "id"
-            )
-            select_fields_str = ", ".join(select_fields)
-
-            dedup_insert = f"""
-            INSERT INTO {table_name}_new ({col_names_str})
-            SELECT {select_fields_str}
-            FROM {table_name}
-            GROUP BY target, subdomain;
-            """  # nosec B608
-
-            sources_insert = f"""
-            INSERT OR IGNORE INTO {sources_table} (subdomain_id, source_plugin)
-            SELECT n.id, o.source_plugin
-            FROM {table_name}_new n
-            JOIN {table_name} o ON n.target = o.target AND n.subdomain = o.subdomain;
-            """
-
             async with self.engine.begin() as conn:
-                await conn.execute(text(ddl_create))
-                await conn.execute(text(dedup_insert))
-                await conn.execute(text(sources_insert))
-                await conn.execute(text(f"DROP TABLE {table_name};"))
-                await conn.execute(text(f"ALTER TABLE {table_name}_new RENAME TO {table_name};"))
                 await conn.execute(
-                    text(f"CREATE INDEX ix_{table_name}_target ON {table_name} (target);")
+                    text(
+                        f"ALTER TABLE {table_name} "
+                        "ADD CONSTRAINT uq_target_subdomain UNIQUE (target, subdomain);"
+                    )
                 )
-                await conn.execute(
-                    text(f"CREATE INDEX ix_{table_name}_subdomain ON {table_name} (subdomain);")
-                )
-
-            logger.info("Migrated %s table successfully.", table_name)
+            logger.info("Added uq_target_subdomain constraint to %s successfully.", table_name)
             added.append("uq_target_subdomain_constraint")
 
         return added
 
-    def _resolve_db_path(self) -> Path | None:
-        """Extract the filesystem path from the database URL (SQLite only)."""
-        url_str = str(self.engine.url)
-        # sqlite+aiosqlite:///subx.db  →  subx.db
-        # sqlite+aiosqlite:////abs/path/to/subx.db  →  /abs/path/to/subx.db
-        for prefix in ("sqlite+aiosqlite:///", "sqlite:///"):
-            if url_str.startswith(prefix):
-                raw = url_str[len(prefix):]
-                return Path(raw) if raw else None
-        return None
-
-    async def save(self, result: ProcessedResult, target: str, auto_pipeline: bool = True) -> int:
-        """Save a ProcessedResult of subdomain scan results into the database."""
+    async def save(
+        self,
+        result: ProcessedResult,
+        target: str,
+        auto_pipeline: bool = True,
+        progress_cb=None,
+        total_plugins: int = 0,
+    ) -> int:
+        """Save a ProcessedResult of subdomain scan results into PostgreSQL."""
         self._ensure_initialized()
         new_count = 0
+        total_to_save = result.total
+        total_saved = 0
         async with self._session() as session, session.begin():
             for plugin_name, subdomains in result.by_plugin.items():
-                new_count += await self._upsert_batch(
-                    session, target, subdomains, plugin_name
+                if not subdomains:
+                    continue
+                added, saved = await self._upsert_batch(
+                    session,
+                    target,
+                    subdomains,
+                    plugin_name,
+                    progress_cb=progress_cb,
+                    total_saved=total_saved,
+                    total_to_save=total_to_save,
+                    total_plugins=total_plugins,
                 )
+                new_count += added
+                total_saved += saved
+
         if auto_pipeline:
-            await self._run_auto_pipeline(target)
+            await self._run_auto_pipeline(
+                target, progress_cb=progress_cb, total_plugins=total_plugins
+            )
         return new_count
 
-    async def _run_auto_pipeline(self, target: str) -> None:
+    async def _run_auto_pipeline(
+        self, target: str, progress_cb=None, total_plugins: int = 0
+    ) -> None:
         """Automatically run tool pipeline (subdomains -> dnsx -> httpx) if configured in config.yaml."""
         try:
             from core.config_manager import ConfigManager
@@ -419,6 +365,12 @@ class StorageManager:
                 from tools.dnsx import DnsxTool
                 from core.tool_manager import ToolManager
                 logger.info("Pipeline Step 1: Resolving subdomains for %s with dnsx...", target)
+                if progress_cb:
+                    progress_cb(
+                        total_plugins,
+                        total_plugins,
+                        f"Resolving subdomains for {target} via dnsx...",
+                    )
                 tool_mgr = ToolManager()
                 dns_results = await tool_mgr.run_tool(DnsxTool(), target, tool_config=dnsx_cfg)
                 if dns_results:
@@ -429,6 +381,13 @@ class StorageManager:
             if httpx_cfg is not None:
                 from core.services.probe_service import ProbeService
                 probe_service = ProbeService(storage=self)
+                count_str = f" ({len(resolved_hosts):,} resolved)" if resolved_hosts is not None else ""
+                if progress_cb:
+                    progress_cb(
+                        total_plugins,
+                        total_plugins,
+                        f"Probing subdomains for {target} via httpx{count_str}...",
+                    )
                 if resolved_hosts is not None:
                     logger.info("Pipeline Step 2: Probing %d resolved subdomains with httpx...", len(resolved_hosts))
                     await probe_service.probe_domain(target, tool_config=httpx_cfg, hosts=resolved_hosts)
@@ -485,7 +444,7 @@ class StorageManager:
                 select(Subdomain)
                 .where(
                     Subdomain.target == target,
-                    Subdomain.tech.ilike(pattern),
+                    Subdomain.tech.ilike(pattern),  # pylint: disable=no-member
                 )
                 .options(selectinload(Subdomain.sources))
                 .order_by(Subdomain.subdomain)
@@ -574,22 +533,11 @@ class StorageManager:
             ]
 
     async def raw_query(self, query: str) -> list[dict]:
-        """Execute a raw SQL query against a read-only instance of the database."""
+        """Execute a raw SQL SELECT query against PostgreSQL in a READ ONLY transaction context."""
         self._ensure_initialized()
 
-        if self._ro_engine is None:
-            db_path = self._resolve_db_path()
-            if db_path:
-                ro_url = (
-                    f"sqlite+aiosqlite:///file:{db_path.absolute().as_posix()}"
-                    "?mode=ro&uri=true"
-                )
-            else:
-                ro_url = self.db_url
-
-            self._ro_engine = create_async_engine(ro_url)
-
-        async with self._ro_engine.connect() as conn:
+        async with self.engine.connect() as conn:
+            await conn.execute(text("SET TRANSACTION READ ONLY"))
             result = await conn.execute(text(query))
             if result.returns_rows:
                 return [dict(row) for row in result.mappings().all()]
@@ -610,8 +558,6 @@ class StorageManager:
         """Close database engines and release all connection resources."""
         if self._initialized:
             await self.engine.dispose()
-            if self._ro_engine is not None:
-                await self._ro_engine.dispose()
             self._initialized = False
 
     # pylint: disable=too-many-locals
@@ -621,98 +567,87 @@ class StorageManager:
         target: str,
         subdomains: list[str],
         plugin_name: str,
-    ) -> int:
-        """Perform a batch sqlite upsert and populate subdomain source linkages."""
+        progress_cb=None,
+        total_saved: int = 0,
+        total_to_save: int = 0,
+        total_plugins: int = 0,
+    ) -> tuple[int, int]:
+        """Perform a high-performance PostgreSQL batch upsert and populate subdomain source linkages."""
         if not subdomains:
-            return 0
+            return 0, 0
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        chunk_size = 450
+        new_count = 0
+        saved_count = 0
+        subdomain_ids: dict[str, int] = {}
 
-        # Query existing subdomains in this batch to determine new_count
-        existing_subdomains = set()
-        for i in range(0, len(subdomains), chunk_size):
-            batch = subdomains[i : i + chunk_size]
-            # pylint: disable=no-member
-            result = await session.execute(
-                select(Subdomain.subdomain).where(
-                    Subdomain.target == target,
-                    Subdomain.subdomain.in_(batch),
-                )
-            )
-            existing_subdomains.update(result.scalars().all())
-
-        is_pg = self.engine.dialect.name == "postgresql"
-        if is_pg:
-            from sqlalchemy.dialects.postgresql import insert as pg_insert
-            insert_fn = pg_insert
-        else:
-            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-            insert_fn = sqlite_insert
-
-        new_count = sum(1 for sub in subdomains if sub not in existing_subdomains)
-
-        # Batch upsert subdomains
-        for i in range(0, len(subdomains), chunk_size):
-            batch = subdomains[i : i + chunk_size]
-            batch_values = [
-                {
+        # 1. Batch upsert subdomains into subx_subdomain in a single round trip per chunk.
+        # Uses PostgreSQL .returning() with (xmax = 0) AS is_new:
+        # Postgres sets xmax = 0 for freshly inserted rows, and xmax != 0 for updated rows.
+        # This yields the primary key ID and computes new_count without requiring separate SELECT queries.
+        for i in range(0, len(subdomains), PG_CHUNK_SIZE):
+            batch = subdomains[i : i + PG_CHUNK_SIZE]
+            seen_in_batch: set[str] = set()
+            batch_values = []
+            for sub in batch:
+                if not sub:
+                    continue
+                sub_clean = sub.strip()
+                if sub_clean in seen_in_batch:
+                    continue
+                seen_in_batch.add(sub_clean)
+                batch_values.append({
                     "target": target,
-                    "subdomain": sub,
+                    "subdomain": sub_clean,
                     "source_plugin": plugin_name,
                     "first_seen": now,
                     "last_seen": now,
-                }
-                for sub in batch
-            ]
+                })
+            if not batch_values:
+                continue
+
+            if progress_cb and total_to_save:
+                current_saved = min(total_saved + saved_count + len(batch_values), total_to_save)
+                progress_cb(
+                    total_plugins,
+                    total_plugins,
+                    f"Saving subdomains to database [{current_saved:,}/{total_to_save:,}] ({plugin_name})...",
+                )
+
             stmt = (
-                insert_fn(Subdomain)
+                pg_insert(Subdomain)
+                .values(batch_values)
                 .on_conflict_do_update(
                     index_elements=["target", "subdomain"],
                     set_={"last_seen": now},
                 )
+                .returning(Subdomain.id, Subdomain.subdomain, text("(xmax = 0) AS is_new"))
             )
-            await session.execute(stmt, batch_values)
-
-        # Retrieve IDs to populate subdomain_sources
-        subdomain_ids = {}
-        for i in range(0, len(subdomains), chunk_size):
-            batch = subdomains[i : i + chunk_size]
-            # pylint: disable=no-member
-            result = await session.execute(
-                select(Subdomain.id, Subdomain.subdomain).where(
-                    Subdomain.target == target,
-                    Subdomain.subdomain.in_(batch),
-                )
-            )
-            for sub_id, name in result.all():
+            res = await session.execute(stmt)
+            for row in res.all():
+                sub_id, name, is_new = row[0], row[1], row[2]
                 subdomain_ids[name] = sub_id
+                if is_new:
+                    new_count += 1
+            saved_count += len(batch_values)
 
-        # Batch insert sources into join table
-        source_values = []
-        for name in subdomains:
-            sub_id = subdomain_ids.get(name)
-            if sub_id:
-                source_values.append({
-                    "subdomain_id": sub_id,
-                    "source_plugin": plugin_name,
-                })
+        # 2. Batch insert discovery sources into subx_subdomain_sources in a single round trip per chunk
+        source_values = [
+            {"subdomain_id": sub_id, "source_plugin": plugin_name}
+            for name, sub_id in subdomain_ids.items()
+            if sub_id
+        ]
 
         if source_values:
-            for i in range(0, len(source_values), chunk_size):
-                batch_src = source_values[i : i + chunk_size]
-                if is_pg:
-                    stmt_source = (
-                        insert_fn(SubdomainSource)
-                        .on_conflict_do_nothing(
-                            index_elements=["subdomain_id", "source_plugin"]
-                        )
+            for i in range(0, len(source_values), PG_CHUNK_SIZE):
+                batch_src = source_values[i : i + PG_CHUNK_SIZE]
+                stmt_source = (
+                    pg_insert(SubdomainSource)
+                    .values(batch_src)
+                    .on_conflict_do_nothing(
+                        index_elements=["subdomain_id", "source_plugin"]
                     )
-                else:
-                    stmt_source = (
-                        insert_fn(SubdomainSource)
-                        .on_conflict_do_nothing()
-                    )
-                await session.execute(stmt_source, batch_src)
+                )
+                await session.execute(stmt_source)
 
-        return new_count
+        return new_count, saved_count

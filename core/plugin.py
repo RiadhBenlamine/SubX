@@ -140,6 +140,7 @@ class SafeClientSession:
         finally:
             if not self.connector.closed:
                 await self.connector.close()
+            await asyncio.sleep(0.25)
 
     def request(self, method: str, url: str, **kwargs) -> SafeRequestContext:
         """Create a SafeRequestContext context manager wrapper for the HTTP query request."""
