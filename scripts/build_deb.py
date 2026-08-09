@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DIST_DIR = ROOT_DIR / "dist"
 BUILD_DIR = ROOT_DIR / "build_deb"
-VERSION = "2.1.1"
+VERSION = "2.1.2"
 PACKAGE_NAME = "subx"
 DEB_FILENAME = f"{PACKAGE_NAME}_{VERSION}-1_all.deb"
 
