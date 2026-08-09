@@ -9,6 +9,7 @@ from core.services.export_service import ExportService
 from core.ui.console import console, error, info, success, warn
 from core.ui.renderers import (
     render_db_rows,
+    render_db_rows_dns,
     render_db_rows_web,
     render_db_summary,
     render_raw_rows,
@@ -32,6 +33,11 @@ class DbCommand(Command):
             "--web",
             help="Show ALIVE, HTTP STATUS, and TITLE columns instead of source/timestamps.",
         ),
+        dns: bool = typer.Option(
+            False,
+            "--dns",
+            help="Show DNS resolution results: RESOLVED status and IP ADDRESS columns.",
+        ),
         filter_plugin: str | None = typer.Option(
             None, "--filter-plugin", help="Filter results by plugin name."
         ),
@@ -43,6 +49,12 @@ class DbCommand(Command):
         ),
         only_dead: bool = typer.Option(
             False, "--dead", "--down", "--only-dead", help="Show/filter only subdomains currently DOWN."
+        ),
+        only_resolved: bool = typer.Option(
+            False, "--resolved", "--only-resolved", help="Show/filter only subdomains with DNS resolution (has IP)."
+        ),
+        only_unresolved: bool = typer.Option(
+            False, "--unresolved", "--only-unresolved", help="Show/filter only subdomains without DNS resolution (no IP)."
         ),
         new_since: str | None = typer.Option(
             None, "--new-since", help="Show subdomains first seen after YYYY-MM-DD."
@@ -87,10 +99,13 @@ class DbCommand(Command):
             self._db(
                 domain,
                 web,
+                dns,
                 filter_plugin,
                 filter_tech,
                 only_alive,
                 only_dead,
+                only_resolved,
+                only_unresolved,
                 new_since,
                 delete,
                 output_n,
@@ -106,10 +121,13 @@ class DbCommand(Command):
         self,
         domain: str | None,
         web: bool,
+        dns: bool,
         filter_plugin: str | None,
         filter_tech: str | None,
         only_alive: bool,
         only_dead: bool,
+        only_resolved: bool,
+        only_unresolved: bool,
         new_since: str | None,
         delete: bool,
         output_n: str | None,
@@ -128,7 +146,7 @@ class DbCommand(Command):
             return
 
         if not domain:
-            if any([delete, filter_plugin, filter_tech, only_alive, only_dead, new_since, output_n, output_x, output_tech, export_project, web]):
+            if any([delete, filter_plugin, filter_tech, only_alive, only_dead, only_resolved, only_unresolved, new_since, output_n, output_x, output_tech, export_project, web, dns]):
                 error("Filters and output flags require -d <domain>.")
             await self._db_summary(service)
             return
@@ -143,10 +161,13 @@ class DbCommand(Command):
             service,
             domain,
             web,
+            dns,
             filter_plugin,
             filter_tech,
             only_alive,
             only_dead,
+            only_resolved,
+            only_unresolved,
             new_since,
             output_n,
             output_x,
@@ -180,10 +201,13 @@ class DbCommand(Command):
         service: DbService,
         domain: str,
         web: bool,
+        dns: bool,
         filter_plugin: str | None,
         filter_tech: str | None,
         only_alive: bool,
         only_dead: bool,
+        only_resolved: bool,
+        only_unresolved: bool,
         new_since: str | None,
         output_n: str | None,
         output_x: str | None,
@@ -200,6 +224,10 @@ class DbCommand(Command):
             filters_str.append("Filter : [bold green]Alive only[/bold green]")
         if only_dead:
             filters_str.append("Filter : [bold red]Down only[/bold red]")
+        if only_resolved:
+            filters_str.append("Filter : [bold green]Resolved only[/bold green]")
+        if only_unresolved:
+            filters_str.append("Filter : [bold red]Unresolved only[/bold red]")
         if new_since:
             try:
                 since_dt = datetime.strptime(new_since, "%Y-%m-%d")
@@ -221,6 +249,12 @@ class DbCommand(Command):
             only_dead=only_dead,
         )
 
+        # Apply DNS resolution filters in-memory (ip column)
+        if only_resolved:
+            rows = [r for r in rows if getattr(r, "ip", None)]
+        if only_unresolved:
+            rows = [r for r in rows if not getattr(r, "ip", None)]
+
         console.print()
 
         if not rows:
@@ -230,7 +264,9 @@ class DbCommand(Command):
             )
             return
 
-        if web:
+        if dns:
+            render_db_rows_dns(rows)
+        elif web:
             render_db_rows_web(rows)
         else:
             render_db_rows(rows)

@@ -108,6 +108,35 @@ def render_db_rows_web(rows: list) -> None:
     console.print(table)
 
 
+def render_db_rows_dns(rows: list) -> None:
+    """Render a table showing DNS resolution information (resolved status, IP address)."""
+    table = make_table(
+        ("SUBDOMAIN",  {"style": "white",     "no_wrap": True}),
+        ("RESOLVED",   {"style": "white",     "justify": "center"}),
+        ("IP ADDRESS", {"style": "cyan",      "no_wrap": True}),
+        ("LAST SEEN",  {"style": "dim white", "justify": "right", "no_wrap": True}),
+    )
+    for row in rows:
+        ip = getattr(row, "ip", None)
+        if ip:
+            resolved_str = "[bold green]✔[/bold green]"
+        else:
+            resolved_str = "[bold red]✘[/bold red]"
+        ip_str = ip if ip else "—"
+        last_seen_str = (
+            row.last_seen.strftime("%Y-%m-%d %H:%M")
+            if getattr(row, "last_seen", None)
+            else "—"
+        )
+        table.add_row(
+            row.subdomain,
+            resolved_str,
+            ip_str,
+            last_seen_str,
+        )
+    console.print(table)
+
+
 def render_raw_rows(rows: list[dict]) -> None:
     """Render raw query results as a table."""
     if not rows:
@@ -217,6 +246,38 @@ def render_http_probe_summary(rows: list, domain: str) -> None:
     console.print(Panel(
         summary,
         title=f"[bold cyan]Probe Summary — {domain}[/bold cyan]",
+        border_style="cyan",
+    ))
+
+
+def render_dns_probe_summary(rows: list, domain: str) -> None:
+    """Render DNS resolution probe results and summary counters."""
+    resolved = [r for r in rows if getattr(r, "ip", None)]
+    unresolved = [r for r in rows if not getattr(r, "ip", None)]
+
+    table = make_table(
+        ("SUBDOMAIN",    {"style": "white",    "no_wrap": True}),
+        ("IP ADDRESS",   {"style": "cyan",     "no_wrap": True}),
+    )
+    for row in resolved:
+        table.add_row(
+            row.subdomain,
+            row.ip or "—",
+        )
+    console.print(table)
+    console.print()
+
+    summary = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+    summary.add_column(style="dim white")
+    summary.add_column(style="bold white")
+    summary.add_row("Resolved", f"[bold green]{len(resolved)}[/bold green]")
+    summary.add_row("Unresolved", f"[bold red]{len(unresolved)}[/bold red]")
+    summary.add_row("──────────────────", "──────")
+    summary.add_row("Total", str(len(rows)))
+
+    console.print(Panel(
+        summary,
+        title=f"[bold cyan]DNS Probe Summary — {domain}[/bold cyan]",
         border_style="cyan",
     ))
 
