@@ -88,11 +88,22 @@ class DnsxTool(Tool):
         user_config = tool_config or {}
         args = ["-silent", "-json", "-a", "-resp", "-no-color"]
 
-        # High-performance defaults if user didn't specify custom values
+        target_count = len(targets)
+        # Dynamically auto-tune concurrency & retries based on target count
         if "threads" not in user_config and "t" not in user_config:
-            args.extend(["-threads", "250"])
+            if target_count < 50:
+                threads = max(5, target_count)
+            elif target_count < 1000:
+                threads = 150
+            elif target_count < 10000:
+                threads = 300
+            else:
+                threads = 500
+            args.extend(["-threads", str(threads)])
+
         if "retry" not in user_config and "r" not in user_config:
-            args.extend(["-retry", "2"])
+            retry = "3" if target_count < 100 else "2"
+            args.extend(["-retry", retry])
 
         # Merge extra CLI flags from config
         if tool_config:

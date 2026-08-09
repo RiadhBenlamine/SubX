@@ -104,13 +104,24 @@ class HttpxTool(Tool):
         user_config = tool_config or {}
         args = ["-silent", "-json", "-tech-detect", "-no-color"]
 
-        # High-performance defaults if user didn't specify custom values
+        target_count = len(targets)
+        # Dynamically auto-tune concurrency, timeout & retries based on target count
         if "threads" not in user_config and "t" not in user_config:
-            args.extend(["-threads", "100"])
+            if target_count < 50:
+                threads = max(5, target_count)
+            elif target_count < 1000:
+                threads = 100
+            else:
+                threads = 200
+            args.extend(["-threads", str(threads)])
+
         if "timeout" not in user_config:
-            args.extend(["-timeout", "5"])
+            timeout_val = "5" if target_count < 1000 else "4"
+            args.extend(["-timeout", timeout_val])
+
         if "retries" not in user_config and "r" not in user_config:
-            args.extend(["-retries", "1"])
+            retries_val = "2" if target_count < 50 else "1"
+            args.extend(["-retries", retries_val])
 
         # Merge extra CLI flags from config
         if tool_config:
