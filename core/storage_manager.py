@@ -197,7 +197,7 @@ class StorageManager:
                     values["source_plugin"] = "Tool"
                     values["first_seen"] = now
                     values["last_seen"] = now
-                    if row.get("alive") is True:
+                    if row.get("alive"):
                         values["last_seen_alive"] = now
                     batch_values.append(values)
 

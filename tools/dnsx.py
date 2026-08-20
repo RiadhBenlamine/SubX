@@ -118,7 +118,7 @@ class DnsxTool(Tool):
                     args.extend([flag, str(value)])
 
         try:
-            stdout, stderr = await self._execute(
+            stdout, _ = await self._execute(
                 args,
                 input_data=input_data,
                 timeout=timeout,

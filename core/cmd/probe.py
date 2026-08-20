@@ -48,7 +48,7 @@ class ProbeCommand(Command):
                 f"[cyan]{self.status_verb} {domain}...[/cyan]", spinner="dots"
             ):
                 results, rows = await self._run_probe(
-                    service, domain, tool_config
+                    service, domain, tool_config, **kwargs
                 )
         except ToolNotFoundError:
             error(
@@ -78,7 +78,7 @@ class ProbeCommand(Command):
 
     # ── methods subclasses must override ────────────────────────
 
-    async def _run_probe(self, service, domain, tool_config):
+    async def _run_probe(self, service, domain, tool_config, **kwargs):
         """Execute the appropriate probe and return (results, rows)."""
         raise NotImplementedError
 
@@ -156,7 +156,7 @@ class HttpProbeCommand(ProbeCommand):
             export_project=export_project,
         ))
 
-    async def _run_probe(self, service, domain, tool_config):
+    async def _run_probe(self, service, domain, tool_config, **kwargs):
         from core.config_manager import ConfigManager
 
         dnsx_cfg = ConfigManager.load_tool_config("dnsx")
@@ -235,6 +235,12 @@ class DnsProbeCommand(ProbeCommand):
             "--domain",
             help="Target domain to probe stored subdomains for.",
         ),
+        resolvers: str | None = typer.Option(
+            None,
+            "-r",
+            "--resolvers",
+            help="Path to a custom resolvers file for dnsx (one resolver IP per line).",
+        ),
         output_n: str | None = typer.Option(
             None, "-oN", help="Save resolved subdomains to file (one per line)."
         ),
@@ -261,13 +267,18 @@ class DnsProbeCommand(ProbeCommand):
     ) -> None:
         self.run_async(self._probe(
             domain,
+            resolvers=resolvers,
             output_n=output_n,
             output_x=output_x,
             output_ip=output_ip,
             export_project=export_project,
         ))
 
-    async def _run_probe(self, service, domain, tool_config):
+    async def _run_probe(self, service, domain, tool_config, **kwargs):
+        resolvers = kwargs.get("resolvers")
+        if resolvers:
+            tool_config = dict(tool_config) if tool_config else {}
+            tool_config["r"] = resolvers
         return await service.dns_probe_domain(domain, tool_config=tool_config)
 
     def _render(self, rows, domain):
