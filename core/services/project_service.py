@@ -5,7 +5,6 @@ from typing import NamedTuple
 
 from core.db_models import Subdomain
 from core.services.base import Service
-from core.ui.renderers import _format_tech
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +29,12 @@ class ProjectService(Service):
         Directory structure created:
             <out_dir>/<domain>/
                 └── recon/
-                      ├── subdomains.txt (all discovered subdomains)
-                      ├── alive.txt      (subdomains verified alive)
-                      ├── dead.txt       (subdomains currently down)
-                      ├── techs.txt      (subdomains with tech stack)
-                      ├── status.txt     (subdomains with HTTP status & title)
-                      ├── ips.txt        (subdomains with IP addresses)
-                      └── sources.txt    (subdomains with discovery plugins)
+                      ├── subdomains.txt  (all discovered subdomains)
+                      ├── live_http.txt   (subdomains verified alive via HTTP)
+                      ├── resolved.txt    (subdomains that resolved via DNS)
+                      ├── status.txt      (subdomains with HTTP status & title)
+                      ├── ips.txt         (subdomains with IP addresses)
+                      └── sources.txt     (subdomains with discovery plugins)
 
         Returns ProjectSummary with file paths and entry counts.
         """
@@ -49,9 +47,6 @@ class ProjectService(Service):
 
             files_created: dict[str, int] = {}
 
-            # Sets of alive and dead subdomains for reciprocal cleanup
-            alive_subs_set = {r.subdomain for r in rows if r.alive is True}
-            dead_subs_set = {r.subdomain for r in rows if r.alive is False}
 
             # 1. subdomains.txt — all subdomains
             all_subs = [r.subdomain for r in rows]
@@ -59,27 +54,19 @@ class ProjectService(Service):
                 recon_dir / "subdomains.txt", all_subs
             )
 
-            # 2. alive.txt — subdomains verified alive
+            # 2. live_http.txt — subdomains verified alive via HTTP
             alive_subs = [r.subdomain for r in rows if r.alive is True]
-            files_created["alive.txt"] = self._save_deduped(
-                recon_dir / "alive.txt", alive_subs, remove_lines=dead_subs_set
+            files_created["live_http.txt"] = self._save_deduped(
+                recon_dir / "live_http.txt", alive_subs
             )
 
-            # 3. dead.txt — subdomains currently down
-            dead_subs = [r.subdomain for r in rows if r.alive is False]
-            files_created["dead.txt"] = self._save_deduped(
-                recon_dir / "dead.txt", dead_subs, remove_lines=alive_subs_set
+            # 3. resolved.txt — subdomains that resolved via DNS
+            resolved_subs = [r.subdomain for r in rows if r.ip]
+            files_created["resolved.txt"] = self._save_deduped(
+                recon_dir / "resolved.txt", resolved_subs
             )
 
-            # 4. techs.txt — subdomains with detected technologies
-            tech_lines = [
-                f"{r.subdomain} [{_format_tech(r.tech)}]" for r in rows if r.tech
-            ]
-            files_created["techs.txt"] = self._save_deduped(
-                recon_dir / "techs.txt", tech_lines
-            )
-
-            # 5. status.txt — HTTP status code and title for probed subdomains
+            # 4. status.txt — HTTP status code and title for probed subdomains
             status_lines = [
                 f"{r.subdomain} [{r.status_code or '—'}] [{r.title or '—'}]"
                 for r in rows
@@ -89,13 +76,13 @@ class ProjectService(Service):
                 recon_dir / "status.txt", status_lines
             )
 
-            # 6. ips.txt — subdomains with IP addresses
+            # 5. ips.txt — subdomains with IP addresses
             ip_lines = [f"{r.subdomain} [{r.ip}]" for r in rows if r.ip]
             files_created["ips.txt"] = self._save_deduped(
                 recon_dir / "ips.txt", ip_lines
             )
 
-            # 7. sources.txt — subdomains with discovery sources
+            # 6. sources.txt — subdomains with discovery sources
             source_lines = []
             for r in rows:
                 sources_str = (

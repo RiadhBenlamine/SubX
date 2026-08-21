@@ -13,7 +13,7 @@ from core.ui.console import console
 class InitDbCommand(Command):
     """Command to initialize PostgreSQL database and set PostgreSQL as default for SubX."""
 
-    name = "init-db"
+    name = "setup"
     help = "[bold green]Initialize PostgreSQL database ('subx')[/bold green] and set PostgreSQL as default."
 
     def callback(
@@ -25,13 +25,13 @@ class InitDbCommand(Command):
             None, "--user", "-u", help="PostgreSQL username (default: postgres)"
         ),
         password: str = typer.Option(
-            None, "--password", "-P", help="PostgreSQL password"
+            None, "--password", "-W", help="PostgreSQL password"
         ),
         port: int = typer.Option(
             5432, "--port", "-p", help="PostgreSQL port (default: 5432)"
         ),
         dbname: str = typer.Option(
-            "subx", "--dbname", "-d", help="Target database name (default: subx)"
+            "subx", "--dbname", "-n", help="Target database name (default: subx)"
         ),
         non_interactive: bool = typer.Option(
             False, "--non-interactive", help="Skip interactive prompts"

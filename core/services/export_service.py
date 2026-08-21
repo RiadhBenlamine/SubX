@@ -7,7 +7,7 @@ from core.ui.console import error, success
 class ExportService:
     """Universal I/O handlers.
 
-    Parses formatting separators and writes domain lines to output files.
+    Writes domain lines to output files.
     """
 
     @staticmethod
@@ -19,19 +19,6 @@ class ExportService:
         out.write_text(sep.join(values) + "\n", encoding="utf-8")
         success(
             f"Saved [bold white]{len(values)}[/bold white] entries → "
-            f"[bold white]{output}[/bold white]  "
-            f"[dim](sep: {sep!r})[/dim]"
+            f"[bold white]{output}[/bold white]"
         )
 
-    @staticmethod
-    def parse_ox(value: str) -> tuple[str, str]:
-        """Parse -oX 'separator:file' argument into (separator, filepath)."""
-        idx = value.rfind(":")
-        if idx in (-1, len(value) - 1):
-            error(
-                "-oX format is '<separator>:<file>' e.g. ';:out.txt' or ' :out.txt'\n"
-                "  The separator comes before the last colon, the file path after it."
-            )
-        sep = value[:idx]
-        file = value[idx + 1:]
-        return sep, file

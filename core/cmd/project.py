@@ -12,8 +12,8 @@ from core.ui.renderers import render_project_summary
 class ProjectCommand(Command):
     """Target project directory management CLI command."""
 
-    name = "project"
-    help = "[bold cyan]Set up & export project directory[/bold cyan] with plain-text recon files."
+    name = "export"
+    help = "[bold cyan]Export project directory[/bold cyan] with plain-text recon files."
 
     # pylint: disable=arguments-differ
     def callback(

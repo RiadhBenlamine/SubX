@@ -39,22 +39,16 @@ class DbCommand(Command):
             help="Show DNS resolution results: RESOLVED status and IP ADDRESS columns.",
         ),
         filter_plugin: str | None = typer.Option(
-            None, "--filter-plugin", help="Filter results by plugin name."
+            None, "-P", "--plugin", help="Filter results by plugin name."
         ),
         filter_tech: str | None = typer.Option(
-            None, "--filter-tech", help="Filter results by detected technology (e.g. 'Nginx')."
+            None, "-t", "--tech", help="Filter results by detected technology (e.g. 'Nginx')."
         ),
         only_alive: bool = typer.Option(
-            False, "--alive", "--only-alive", help="Show/filter only verified ALIVE subdomains."
-        ),
-        only_dead: bool = typer.Option(
-            False, "--dead", "--down", "--only-dead", help="Show/filter only subdomains currently DOWN."
+            False, "-a", "--alive", help="Show only verified ALIVE subdomains."
         ),
         only_resolved: bool = typer.Option(
-            False, "--resolved", "--only-resolved", help="Show/filter only subdomains with DNS resolution (has IP)."
-        ),
-        only_unresolved: bool = typer.Option(
-            False, "--unresolved", "--only-unresolved", help="Show/filter only subdomains without DNS resolution (no IP)."
+            False, "--resolved", help="Show only subdomains with DNS resolution (has IP)."
         ),
         new_since: str | None = typer.Option(
             None, "--new-since", help="Show subdomains first seen after YYYY-MM-DD."
@@ -62,21 +56,13 @@ class DbCommand(Command):
         delete: bool = typer.Option(
             False, "--delete", help="Delete all records for the target domain."
         ),
-        output_n: str | None = typer.Option(
-            None, "-oN", help="Save subdomains to file (one per line)."
-        ),
-        output_x: str | None = typer.Option(
-            None,
-            "-oX",
-            help=(
-                "Save subdomains to file with custom separator. "
-                "Use -oX '<sep>:<file>' e.g. ' :out.txt' or ';:out.txt'"
-            ),
+        output: str | None = typer.Option(
+            None, "-o", "--out", help="Save subdomains to file (one per line)."
         ),
         output_tech: str | None = typer.Option(
             None,
-            "-oT",
-            "--output-tech",
+            "-T",
+            "--out-tech",
             help="Save subdomains with detected technologies to file.",
         ),
         export_project: str | None = typer.Option(
@@ -87,11 +73,11 @@ class DbCommand(Command):
         ),
         raw_query: str | None = typer.Option(
             None,
-            "-C",
-            "--custom-query",
+            "-q",
+            "--query",
             help=(
                 "Run a raw SELECT query against the DB. "
-                "e.g. -C \"SELECT subdomain FROM subdomain WHERE target='x.com'\""
+                "e.g. -q \"SELECT subdomain FROM subdomain WHERE target='x.com'\""
             ),
         ),
     ) -> None:
@@ -103,13 +89,10 @@ class DbCommand(Command):
                 filter_plugin,
                 filter_tech,
                 only_alive,
-                only_dead,
                 only_resolved,
-                only_unresolved,
                 new_since,
                 delete,
-                output_n,
-                output_x,
+                output,
                 output_tech,
                 export_project,
                 raw_query,
@@ -125,13 +108,10 @@ class DbCommand(Command):
         filter_plugin: str | None,
         filter_tech: str | None,
         only_alive: bool,
-        only_dead: bool,
         only_resolved: bool,
-        only_unresolved: bool,
         new_since: str | None,
         delete: bool,
-        output_n: str | None,
-        output_x: str | None,
+        output: str | None,
         output_tech: str | None,
         export_project: str | None,
         raw_query: str | None,
@@ -142,18 +122,18 @@ class DbCommand(Command):
         service = DbService()
 
         if raw_query:
-            await self._db_raw_query(service, raw_query, output_n, output_x)
+            await self._db_raw_query(service, raw_query, output)
             return
 
         if not domain:
-            if any([delete, filter_plugin, filter_tech, only_alive, only_dead, only_resolved, only_unresolved, new_since, output_n, output_x, output_tech, export_project, web, dns]):
+            if any([delete, filter_plugin, filter_tech, only_alive, only_resolved, new_since, output, output_tech, export_project, web, dns]):
                 error("Filters and output flags require -d <domain>.")
             await self._db_summary(service)
             return
 
         if delete:
-            if output_n or output_x or output_tech or export_project is not None:
-                warn("-oN / -oX / -oT / --project are ignored when using --delete.")
+            if output or output_tech or export_project is not None:
+                warn("--out / --out-tech / --project are ignored when using --delete.")
             await self._db_delete(service, domain)
             return
 
@@ -165,12 +145,9 @@ class DbCommand(Command):
             filter_plugin,
             filter_tech,
             only_alive,
-            only_dead,
             only_resolved,
-            only_unresolved,
             new_since,
-            output_n,
-            output_x,
+            output,
             output_tech,
             export_project,
         )
@@ -205,12 +182,9 @@ class DbCommand(Command):
         filter_plugin: str | None,
         filter_tech: str | None,
         only_alive: bool,
-        only_dead: bool,
         only_resolved: bool,
-        only_unresolved: bool,
         new_since: str | None,
-        output_n: str | None,
-        output_x: str | None,
+        output: str | None,
         output_tech: str | None,
         export_project: str | None,
     ) -> None:
@@ -222,12 +196,8 @@ class DbCommand(Command):
             filters_str.append(f"Tech : [bold white]{filter_tech}[/bold white]")
         if only_alive:
             filters_str.append("Filter : [bold green]Alive only[/bold green]")
-        if only_dead:
-            filters_str.append("Filter : [bold red]Down only[/bold red]")
         if only_resolved:
             filters_str.append("Filter : [bold green]Resolved only[/bold green]")
-        if only_unresolved:
-            filters_str.append("Filter : [bold red]Unresolved only[/bold red]")
         if new_since:
             try:
                 since_dt = datetime.strptime(new_since, "%Y-%m-%d")
@@ -246,14 +216,12 @@ class DbCommand(Command):
             filter_tech=filter_tech,
             new_since=since_dt,
             only_alive=only_alive,
-            only_dead=only_dead,
+            only_dead=False,
         )
 
         # Apply DNS resolution filters in-memory (ip column)
         if only_resolved:
             rows = [r for r in rows if getattr(r, "ip", None)]
-        if only_unresolved:
-            rows = [r for r in rows if not getattr(r, "ip", None)]
 
         console.print()
 
@@ -275,12 +243,8 @@ class DbCommand(Command):
 
         subdomains = [row.subdomain for row in rows]
 
-        if output_n:
-            ExportService.write_output(subdomains, output_n, separator="\n")
-
-        if output_x:
-            sep, file = ExportService.parse_ox(output_x)
-            ExportService.write_output(subdomains, file, separator=sep)
+        if output:
+            ExportService.write_output(subdomains, output, separator="\n")
 
         if output_tech:
             from core.ui.renderers import _format_tech
@@ -302,12 +266,11 @@ class DbCommand(Command):
         self,
         service: DbService,
         query: str,
-        output_n: str | None,
-        output_x: str | None,
+        output: str | None,
     ) -> None:
         q = query.strip()
         if not q.upper().startswith("SELECT"):
-            error("Only SELECT queries are allowed with -C.")
+            error("Only SELECT queries are allowed with -q.")
 
         info(f"Query : [dim white]{q}[/dim white]")
         console.print()
@@ -323,9 +286,5 @@ class DbCommand(Command):
         first_col = list(rows[0].keys())[0]
         values = [str(row[first_col]) for row in rows if row.get(first_col) is not None]
 
-        if output_n:
-            ExportService.write_output(values, output_n, separator="\n")
-
-        if output_x:
-            sep, file = ExportService.parse_ox(output_x)
-            ExportService.write_output(values, file, separator=sep)
+        if output:
+            ExportService.write_output(values, output, separator="\n")

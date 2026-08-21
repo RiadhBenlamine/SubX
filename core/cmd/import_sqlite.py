@@ -11,7 +11,7 @@ from core.ui.renderers import render_import_summary
 class ImportSqliteCommand(Command):
     """SQLite to PostgreSQL database migration CLI command."""
 
-    name = "import-sqlite"
+    name = "import"
     help = "[bold cyan]Import SQLite database[/bold cyan] into PostgreSQL or active target DB engine."
 
     # pylint: disable=arguments-differ

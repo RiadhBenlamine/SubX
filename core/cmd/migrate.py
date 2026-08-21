@@ -9,7 +9,7 @@ from core.ui.console import console, error, info, success
 class MigrateCommand(Command):
     """Database schema migration CLI command."""
 
-    name = "dev-migrate"
+    name = "migrate"
     help = "Safely migrate the database schema to match the current models."
 
     # pylint: disable=arguments-differ

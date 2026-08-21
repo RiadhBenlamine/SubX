@@ -44,12 +44,11 @@ def main_callback(
 
 
 # Register all subcommands
-InitDbCommand().register(app)
 EnumCommand().register(app)
-DbCommand().register(app)
-HttpProbeCommand().register(app)
-DnsProbeCommand().register(app)
-ProjectCommand().register(app)
-ImportSqliteCommand().register(app)
-MigrateCommand().register(app)
-
+HttpProbeCommand().register(app)        # subx probe
+DnsProbeCommand().register(app)         # subx resolve
+DbCommand().register(app)              # subx db
+ProjectCommand().register(app)          # subx export
+InitDbCommand().register(app)           # subx setup
+ImportSqliteCommand().register(app)     # subx import
+MigrateCommand().register(app)          # subx migrate

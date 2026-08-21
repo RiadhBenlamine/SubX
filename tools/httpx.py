@@ -199,6 +199,8 @@ class HttpxTool(Tool):
                 results[host] = {"subdomain": host, "alive": False}
             else:
                 tech_list = raw.get("tech")
+                if tech_list:
+                    tech_list = [t for t in tech_list if t.upper() != "HSTS"]
                 host_ip = raw.get("host_ip")
                 if not host_ip and raw.get("a"):
                     a_rec = raw["a"]

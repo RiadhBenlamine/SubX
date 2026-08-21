@@ -27,7 +27,7 @@ class EnumCommand(Command):
             None, "--project", "-p", help="Export plain-text project directory structure after enumeration. Optionally specify output directory name (default: 'projects')."
         ),
         debug: bool = typer.Option(
-            False, "--debug", "--verbose", help="Enable verbose debug logging."
+            False, "-D", "--debug", help="Enable verbose debug logging."
         ),
     ) -> None:
         self.run_async(self._enum(config_file, save, export_project, debug))

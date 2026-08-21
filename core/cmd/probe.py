@@ -110,7 +110,7 @@ class ProbeCommand(Command):
 class HttpProbeCommand(ProbeCommand):
     """Subdomain HTTP liveness probing CLI command."""
 
-    name = "http-probe"
+    name = "probe"
     help = "[bold cyan]Probe stored subdomains[/bold cyan] for liveness using httpx."
     tool_name = "httpx"
     status_verb = "Probing"
@@ -124,21 +124,13 @@ class HttpProbeCommand(ProbeCommand):
             "--domain",
             help="Target domain to probe stored subdomains for.",
         ),
-        output_n: str | None = typer.Option(
-            None, "-oN", help="Save alive subdomains to file (one per line)."
-        ),
-        output_x: str | None = typer.Option(
-            None,
-            "-oX",
-            help=(
-                "Save alive subdomains to file with custom separator. "
-                "Use -oX '<sep>:<file>'."
-            ),
+        output: str | None = typer.Option(
+            None, "-o", "--out", help="Save alive subdomains to file (one per line)."
         ),
         output_tech: str | None = typer.Option(
             None,
-            "-oT",
-            "--output-tech",
+            "-T",
+            "--out-tech",
             help="Save alive subdomains with detected technologies to file.",
         ),
         export_project: str | None = typer.Option(
@@ -150,8 +142,7 @@ class HttpProbeCommand(ProbeCommand):
     ) -> None:
         self.run_async(self._probe(
             domain,
-            output_n=output_n,
-            output_x=output_x,
+            output=output,
             output_tech=output_tech,
             export_project=export_project,
         ))
@@ -187,11 +178,10 @@ class HttpProbeCommand(ProbeCommand):
         render_http_probe_summary(rows, domain)
 
     def _export_outputs(self, rows, **kwargs):
-        output_n = kwargs.get("output_n")
-        output_x = kwargs.get("output_x")
+        output = kwargs.get("output")
         output_tech = kwargs.get("output_tech")
 
-        if not (output_n or output_x or output_tech):
+        if not (output or output_tech):
             return
 
         alive_rows = [row for row in rows if row.alive is True]
@@ -200,11 +190,8 @@ class HttpProbeCommand(ProbeCommand):
             return
 
         alive_subs = [r.subdomain for r in alive_rows]
-        if output_n:
-            ExportService.write_output(alive_subs, output_n, separator="\n")
-        if output_x:
-            sep, file = ExportService.parse_ox(output_x)
-            ExportService.write_output(alive_subs, file, separator=sep)
+        if output:
+            ExportService.write_output(alive_subs, output, separator="\n")
         if output_tech:
             from core.ui.renderers import _format_tech
             tech_lines = [
@@ -221,8 +208,8 @@ class HttpProbeCommand(ProbeCommand):
 class DnsProbeCommand(ProbeCommand):
     """Subdomain DNS resolution probing CLI command."""
 
-    name = "dns-probe"
-    help = "[bold cyan]Probe stored subdomains[/bold cyan] for DNS resolution using dnsx."
+    name = "resolve"
+    help = "[bold cyan]Resolve stored subdomains[/bold cyan] for DNS records using dnsx."
     tool_name = "dnsx"
     status_verb = "DNS resolving"
 
@@ -233,7 +220,7 @@ class DnsProbeCommand(ProbeCommand):
             ...,
             "-d",
             "--domain",
-            help="Target domain to probe stored subdomains for.",
+            help="Target domain to resolve stored subdomains for.",
         ),
         resolvers: str | None = typer.Option(
             None,
@@ -241,21 +228,13 @@ class DnsProbeCommand(ProbeCommand):
             "--resolvers",
             help="Path to a custom resolvers file for dnsx (one resolver IP per line).",
         ),
-        output_n: str | None = typer.Option(
-            None, "-oN", help="Save resolved subdomains to file (one per line)."
-        ),
-        output_x: str | None = typer.Option(
-            None,
-            "-oX",
-            help=(
-                "Save resolved subdomains to file with custom separator. "
-                "Use -oX '<sep>:<file>'."
-            ),
+        output: str | None = typer.Option(
+            None, "-o", "--out", help="Save resolved subdomains to file (one per line)."
         ),
         output_ip: str | None = typer.Option(
             None,
-            "-oI",
-            "--output-ip",
+            "-I",
+            "--out-ip",
             help="Save resolved subdomains with IP addresses to file.",
         ),
         export_project: str | None = typer.Option(
@@ -268,8 +247,7 @@ class DnsProbeCommand(ProbeCommand):
         self.run_async(self._probe(
             domain,
             resolvers=resolvers,
-            output_n=output_n,
-            output_x=output_x,
+            output=output,
             output_ip=output_ip,
             export_project=export_project,
         ))
@@ -286,11 +264,10 @@ class DnsProbeCommand(ProbeCommand):
         render_dns_probe_summary(rows, domain)
 
     def _export_outputs(self, rows, **kwargs):
-        output_n = kwargs.get("output_n")
-        output_x = kwargs.get("output_x")
+        output = kwargs.get("output")
         output_ip = kwargs.get("output_ip")
 
-        if not (output_n or output_x or output_ip):
+        if not (output or output_ip):
             return
 
         resolved_rows = [row for row in rows if getattr(row, "ip", None)]
@@ -299,11 +276,8 @@ class DnsProbeCommand(ProbeCommand):
             return
 
         resolved_subs = [r.subdomain for r in resolved_rows]
-        if output_n:
-            ExportService.write_output(resolved_subs, output_n, separator="\n")
-        if output_x:
-            sep, file = ExportService.parse_ox(output_x)
-            ExportService.write_output(resolved_subs, file, separator=sep)
+        if output:
+            ExportService.write_output(resolved_subs, output, separator="\n")
         if output_ip:
             ip_lines = [
                 f"{r.subdomain} [{r.ip}]"

@@ -157,6 +157,24 @@ You can also store API keys in `~/.config/subx/.env` (e.g. `SHODAN_API=your-key`
 subx [COMMAND] [OPTIONS]
 ```
 
+### Quick Reference
+
+```bash
+subx enum -c config.yaml              # Enumerate subdomains
+subx probe -d example.com             # HTTP probe
+subx resolve -d example.com           # DNS resolve
+subx db                               # List tracked domains
+subx db -d example.com --web          # Web liveness view
+subx db -d example.com --dns          # DNS resolution view
+subx db -d example.com --alive -o a.txt   # Export alive subs
+subx db -d example.com --tech Nginx   # Filter by technology
+subx db --query "SELECT ..."          # Raw SQL query
+subx export -d example.com            # Export project files
+subx setup                            # Setup PostgreSQL
+subx import subx.db                   # Import SQLite → PostgreSQL
+subx migrate                          # Run schema migrations
+```
+
 ### Enumerate Subdomains
 
 ```bash
@@ -168,37 +186,36 @@ Runs all configured passive plugins against your scope. Results stream to your t
 - `-c`, `--config` — Path to config file (required)
 - `--save` / `--no-save` — Toggle database saving (default: save)
 - `-p`, `--project` — Auto-export project directory after scan
-- `--debug` — Enable verbose debug logs
+- `-D`, `--debug` — Enable verbose debug logs
 
-### DNS Probing (`dns-probe`)
-
-Resolve stored subdomains using `dnsx` to get IP addresses:
-
-```bash
-subx dns-probe -d example.com
-```
-
-- `-d`, `--domain` — Target domain (required)
-- `-oN <file>` — Save resolved subdomains (one per line)
-- `-oX '<sep>:<file>'` — Custom separator output (e.g. `';:resolved.txt'`)
-- `-oI`, `--output-ip <file>` — Save resolved subdomains with IP addresses (`subdomain [ip]`)
-- `-p`, `--project` — Export project directory structure after probing
-
-### HTTP Probing (`http-probe`)
+### HTTP Probing (`probe`)
 
 Probe stored subdomains for web liveness, HTTP codes, titles, and technologies using `httpx`:
 
 ```bash
-subx http-probe -d example.com
+subx probe -d example.com
 ```
 
-*Note: If `dnsx` is configured in `config.yaml`, `http-probe` automatically resolves subdomains first and probes only active DNS hosts.*
+*Note: If `dnsx` is configured in `config.yaml`, `probe` automatically resolves subdomains first and probes only active DNS hosts.*
 
 - `-d`, `--domain` — Target domain (required)
-- `-oN <file>` — Save alive subdomains
-- `-oX '<sep>:<file>'` — Custom separator output
-- `-oT`, `--output-tech <file>` — Save subdomains with tech stack (e.g. `app.example.com [Nginx, React]`)
+- `-o`, `--out <file>` — Save alive subdomains to file
+- `-T`, `--out-tech <file>` — Save subdomains with tech stack (e.g. `app.example.com [Nginx, React]`)
 - `-p`, `--project` — Export project directory after probing
+
+### DNS Resolution (`resolve`)
+
+Resolve stored subdomains using `dnsx` to get IP addresses:
+
+```bash
+subx resolve -d example.com
+```
+
+- `-d`, `--domain` — Target domain (required)
+- `-r`, `--resolvers <file>` — Custom resolvers file (one IP per line)
+- `-o`, `--out <file>` — Save resolved subdomains to file
+- `-I`, `--out-ip <file>` — Save resolved subdomains with IP addresses (`subdomain [ip]`)
+- `-p`, `--project` — Export project directory structure after probing
 
 ### Query Database (`db`)
 
@@ -217,23 +234,21 @@ subx db -d example.com --dns
 # Show Web liveness view (Alive status, HTTP Code, Title, Tech)
 subx db -d example.com --web
 
+# Filter by alive status
+subx db -d example.com --alive --web
+
 # Filter by DNS resolution status
 subx db -d example.com --resolved --dns
-subx db -d example.com --unresolved
-
-# Filter by Web liveness status
-subx db -d example.com --alive --web
-subx db -d example.com --down
 
 # Filter by technology or plugin source
-subx db -d example.com --filter-tech Nginx
-subx db -d example.com --filter-plugin ShodanPlugin
+subx db -d example.com --tech Nginx
+subx db -d example.com --plugin ShodanPlugin
 
 # Run custom read-only SQL query
-subx db -C "SELECT subdomain, ip, status_code FROM subx_subdomain WHERE target='example.com' AND alive=true"
+subx db --query "SELECT subdomain, ip, status_code FROM subx_subdomain WHERE target='example.com' AND alive=true"
 
-# Export filtered subdomains to file
-subx db -d example.com --alive -oN live.txt
+# Export alive subdomains to file
+subx db -d example.com --alive -o live.txt
 
 # Delete domain records
 subx db -d example.com --delete
@@ -242,7 +257,7 @@ subx db -d example.com --delete
 ### Export Project Workspace
 
 ```bash
-subx project -d example.com
+subx export -d example.com
 ```
 
 Creates a structured output directory under `projects/`:
@@ -260,19 +275,19 @@ projects/
               └── sources.txt
 ```
 
-You can also pass `-p` / `--project` to `enum`, `http-probe`, `dns-probe`, or `db` commands.
+You can also pass `-p` / `--project` to `enum`, `probe`, `resolve`, or `db` commands.
 
 ### Database Setup & Migrations
 
 ```bash
 # Setup PostgreSQL database connection
-subx init-db -H 127.0.0.1 -u postgres -P "password" -d subx
+subx setup -H 127.0.0.1 -u postgres -W "password" -n subx
 
 # Import an existing SQLite database into PostgreSQL
-subx import-sqlite subx.db
+subx import subx.db
 
 # Apply schema migrations when updating SUBX
-subx dev-migrate
+subx migrate
 ```
 
 ---
@@ -281,7 +296,7 @@ subx dev-migrate
 
 SUBX uses SQLite by default. To connect to a PostgreSQL database:
 
-1. Run `subx init-db` (saves connection info to `~/.config/subx/config.yaml`), or
+1. Run `subx setup` (saves connection info to `~/.config/subx/config.yaml`), or
 2. Set the `DATABASE_URL` environment variable:
 
 ```bash
